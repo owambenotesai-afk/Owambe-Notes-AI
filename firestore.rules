@@ -27,7 +27,8 @@ service cloud.firestore {
              data.uid is string && data.uid.size() > 0 && data.uid.size() < 100 &&
              data.userId is string && data.userId.size() > 0 && data.userId.size() < 100 &&
              data.username is string && data.username.size() > 0 && data.username.size() < 50 &&
-             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 1000)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 1000000)) &&
+             (!('coverURL' in data) || (data.coverURL is string && data.coverURL.size() < 1000000)) &&
              (!('bio' in data) || (data.bio is string && data.bio.size() <= 150)) &&
              (!('online' in data) || data.online is bool) &&
              (!('lastSeen' in data) || (data.lastSeen is string && data.lastSeen.size() < 50)) &&
@@ -84,7 +85,8 @@ service cloud.firestore {
              data.userId is string && data.userId.size() > 0 && data.userId.size() < 100 &&
              data.email is string && (data.email == '' || isValidEmail(data.email)) && data.email.size() < 100 &&
              data.username is string && data.username.size() > 0 && data.username.size() < 50 &&
-             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 1000)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 1000000)) &&
+             (!('coverURL' in data) || (data.coverURL is string && data.coverURL.size() < 1000000)) &&
              (!('bio' in data) || (data.bio is string && data.bio.size() <= 150)) &&
              (!('online' in data) || data.online is bool) &&
              (!('lastSeen' in data) || (data.lastSeen is string && data.lastSeen.size() < 50)) &&

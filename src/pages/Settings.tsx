@@ -3,7 +3,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { db, storage, handleFirestoreError, OperationType } from '../firebase';
 import { doc, getDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { User, Copy, Check, LogOut, Camera, Calendar, Mail, Circle } from 'lucide-react';
+import { User, Copy, Check, LogOut, Camera, Calendar, Mail, Circle, Upload, Image as ImageIcon } from 'lucide-react';
+import { CameraModal } from '../components/CameraModal';
 
 export const Settings = () => {
   const { user, logOut } = useAuth();
@@ -13,7 +14,13 @@ export const Settings = () => {
   const [bio, setBio] = useState('');
   const [copied, setCopied] = useState(false);
   const [uploading, setUploading] = useState(false);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
+  
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [cameraTarget, setCameraTarget] = useState<'profile' | 'cover' | null>(null);
+  const [showPhotoOptions, setShowPhotoOptions] = useState<'profile' | 'cover' | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -39,13 +46,11 @@ export const Settings = () => {
   const handleSave = async () => {
     if (!user) return;
     try {
-      // Validate username
       if (!/^[a-zA-Z0-9_]+$/.test(username)) {
         alert('Username can only contain letters, numbers, and underscores');
         return;
       }
 
-      // Check if username is unique if changed
       if (username !== profile?.username) {
         const { collection, query, where, getDocs } = await import('firebase/firestore');
         const q = query(collection(db, 'users_public'), where('username', '==', username.toLowerCase()));
@@ -78,32 +83,92 @@ export const Settings = () => {
     }
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
-
+  const uploadPhoto = async (file: File, type: 'profile' | 'cover') => {
+    if (!user) return;
     try {
       setUploading(true);
-      const storageRef = ref(storage, `profile_pictures/${user.uid}_${Date.now()}`);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
+      
+      // Resize image and convert to base64
+      const base64Url = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            
+            // Max dimensions
+            const MAX_WIDTH = type === 'profile' ? 400 : 1200;
+            const MAX_HEIGHT = type === 'profile' ? 400 : 800;
+            
+            if (width > height) {
+              if (width > MAX_WIDTH) {
+                height *= MAX_WIDTH / width;
+                width = MAX_WIDTH;
+              }
+            } else {
+              if (height > MAX_HEIGHT) {
+                width *= MAX_HEIGHT / height;
+                height = MAX_HEIGHT;
+              }
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              reject(new Error('Could not get canvas context'));
+              return;
+            }
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Compress to JPEG with 0.7 quality to keep size small
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+            
+            // Check size (Firestore limit is 1MB, we want to stay well below, e.g., < 800KB)
+            // Base64 size is roughly string length * (3/4)
+            if (dataUrl.length * 0.75 > 800000) {
+                reject(new Error('Image is too large even after compression.'));
+                return;
+            }
+            
+            resolve(dataUrl);
+          };
+          img.onerror = () => reject(new Error('Failed to load image'));
+          img.src = e.target?.result as string;
+        };
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsDataURL(file);
+      });
 
       const batch = writeBatch(db);
       const userRef = doc(db, `users/${user.uid}`);
       const publicRef = doc(db, `users_public/${user.uid}`);
 
-      batch.update(userRef, { photoURL: url });
-      batch.update(publicRef, { photoURL: url });
+      const updateData = type === 'profile' ? { photoURL: base64Url } : { coverURL: base64Url };
+      batch.update(userRef, updateData);
+      batch.update(publicRef, updateData);
 
       await batch.commit();
       
-      setProfile({ ...profile, photoURL: url });
+      setProfile({ ...profile, ...updateData });
     } catch (error) {
-      console.error('Error uploading image:', error);
-      alert('Failed to upload image. Please try again.');
+      console.error(`Error uploading ${type} image:`, error);
+      alert(`Failed to upload ${type} image: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setUploading(false);
+      setShowPhotoOptions(null);
     }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'profile' | 'cover') => {
+    const file = e.target.files?.[0];
+    if (file) {
+      await uploadPhoto(file, type);
+    }
+    // Reset input so the same file can be selected again if needed
+    if (e.target) e.target.value = '';
   };
 
   const copyUserId = () => {
@@ -124,14 +189,54 @@ export const Settings = () => {
   };
 
   return (
-    <div className="p-4 md:p-8 max-w-2xl mx-auto">
+    <div className="p-4 md:p-8 max-w-2xl mx-auto pb-24">
       <div className="bg-white dark:bg-stone-900 rounded-3xl border border-stone-200 dark:border-stone-800 shadow-sm overflow-hidden">
         {/* Header / Cover Area */}
-        <div className="h-32 bg-gradient-to-r from-[#00BFA5] to-emerald-400 relative">
+        <div className="h-48 bg-gradient-to-r from-[#00BFA5] to-emerald-400 relative group">
+          {profile?.coverURL && (
+            <img src={profile.coverURL} alt="Cover" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          )}
+          
+          {/* Cover Photo Button */}
+          <div className="absolute top-4 right-4">
+            <button 
+              onClick={() => setShowPhotoOptions(showPhotoOptions === 'cover' ? null : 'cover')}
+              disabled={uploading}
+              className="p-2 bg-black/50 text-white rounded-full shadow-lg hover:bg-black/70 backdrop-blur-sm transition-colors disabled:opacity-50"
+            >
+              <ImageIcon className="w-5 h-5" />
+            </button>
+            
+            {showPhotoOptions === 'cover' && (
+              <div className="absolute top-full right-0 mt-2 w-48 bg-white dark:bg-stone-800 rounded-xl shadow-xl border border-stone-200 dark:border-stone-700 overflow-hidden z-10">
+                <button 
+                  onClick={() => { coverInputRef.current?.click(); setShowPhotoOptions(null); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors text-left"
+                >
+                  <Upload className="w-4 h-4" /> Upload Photo
+                </button>
+                <button 
+                  onClick={() => { setCameraTarget('cover'); setIsCameraOpen(true); setShowPhotoOptions(null); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors text-left border-t border-stone-100 dark:border-stone-700"
+                >
+                  <Camera className="w-4 h-4" /> Take Photo
+                </button>
+              </div>
+            )}
+          </div>
+
+          <input 
+            type="file" 
+            ref={coverInputRef} 
+            onChange={(e) => handleImageUpload(e, 'cover')} 
+            accept="image/*" 
+            className="hidden" 
+          />
+
           <div className="absolute -bottom-16 left-8">
-            <div className="relative group">
-              <div className="w-32 h-32 rounded-full bg-white dark:bg-stone-800 p-1">
-                <div className="w-full h-full rounded-full overflow-hidden bg-stone-100 dark:bg-stone-700 flex items-center justify-center">
+            <div className="relative">
+              <div className="w-32 h-32 rounded-full bg-white dark:bg-stone-900 p-1 shadow-md">
+                <div className="w-full h-full rounded-full overflow-hidden bg-stone-100 dark:bg-stone-800 flex items-center justify-center">
                   {profile?.photoURL ? (
                     <img src={profile.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   ) : (
@@ -139,17 +244,36 @@ export const Settings = () => {
                   )}
                 </div>
               </div>
+              
               <button 
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => setShowPhotoOptions(showPhotoOptions === 'profile' ? null : 'profile')}
                 disabled={uploading}
                 className="absolute bottom-2 right-2 p-2 bg-stone-900 text-white rounded-full shadow-lg hover:bg-stone-800 transition-colors disabled:opacity-50"
               >
                 <Camera className="w-4 h-4" />
               </button>
+
+              {showPhotoOptions === 'profile' && (
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 bg-white dark:bg-stone-800 rounded-xl shadow-xl border border-stone-200 dark:border-stone-700 overflow-hidden z-10">
+                  <button 
+                    onClick={() => { fileInputRef.current?.click(); setShowPhotoOptions(null); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors text-left"
+                  >
+                    <Upload className="w-4 h-4" /> Upload Photo
+                  </button>
+                  <button 
+                    onClick={() => { setCameraTarget('profile'); setIsCameraOpen(true); setShowPhotoOptions(null); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors text-left border-t border-stone-100 dark:border-stone-700"
+                  >
+                    <Camera className="w-4 h-4" /> Take Photo
+                  </button>
+                </div>
+              )}
+
               <input 
                 type="file" 
                 ref={fileInputRef} 
-                onChange={handleImageUpload} 
+                onChange={(e) => handleImageUpload(e, 'profile')} 
                 accept="image/*" 
                 className="hidden" 
               />
@@ -250,6 +374,21 @@ export const Settings = () => {
           </div>
         </div>
       </div>
+
+      <CameraModal 
+        isOpen={isCameraOpen}
+        onClose={() => {
+          setIsCameraOpen(false);
+          setCameraTarget(null);
+        }}
+        onCapture={(file) => {
+          if (cameraTarget) {
+            uploadPhoto(file, cameraTarget);
+          }
+        }}
+        title={cameraTarget === 'profile' ? "Take Profile Photo" : "Take Cover Photo"}
+      />
     </div>
   );
 };
+

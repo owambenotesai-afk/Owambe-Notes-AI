@@ -9,6 +9,7 @@
         "username": { "type": "string" },
         "email": { "type": "string", "format": "email" },
         "photoURL": { "type": "string" },
+        "coverURL": { "type": "string" },
         "bio": { "type": "string" },
         "online": { "type": "boolean" },
         "lastSeen": { "type": "string", "format": "date-time" },
