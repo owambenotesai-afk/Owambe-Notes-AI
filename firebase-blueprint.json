@@ -1,0 +1,187 @@
+{
+  "entities": {
+    "UserProfile": {
+      "description": "User profile and settings",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "userId": { "type": "string" },
+        "username": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "photoURL": { "type": "string" },
+        "bio": { "type": "string" },
+        "online": { "type": "boolean" },
+        "lastSeen": { "type": "string", "format": "date-time" },
+        "isAnonymous": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "createdAt", "userId", "username"]
+    },
+    "Chat": {
+      "title": "Chat",
+      "description": "A private or group chat",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["private", "group"] },
+        "participantIds": { "type": "array", "items": { "type": "string" } },
+        "privateChatId": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "lastMessage": {
+          "type": "object",
+          "properties": {
+            "text": { "type": "string" },
+            "senderId": { "type": "string" },
+            "createdAt": { "type": "string", "format": "date-time" }
+          }
+        },
+        "archivedBy": { "type": "array", "items": { "type": "string" } },
+        "acceptedBy": { "type": "array", "items": { "type": "string" } },
+        "typing": { "type": "object", "additionalProperties": { "type": "boolean" } },
+        "participantNames": { "type": "object", "additionalProperties": { "type": "string" } },
+        "participantPhotos": { "type": "object", "additionalProperties": { "type": "string" } },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "whoCanSendMessages": { "type": "string", "enum": ["all", "admins"] },
+            "whoCanAddMembers": { "type": "string", "enum": ["all", "admins"] },
+            "whoCanChangeInfo": { "type": "string", "enum": ["all", "admins"] },
+            "whoCanPinMessages": { "type": "string", "enum": ["all", "admins"] }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "type", "createdAt", "updatedAt"]
+    },
+    "ChatMember": {
+      "title": "ChatMember",
+      "description": "A member of a chat",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "chatId": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "moderator", "member"] },
+        "joinedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "chatId", "role", "joinedAt"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "A message in a chat",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "text": { "type": "string" },
+        "type": { "type": "string", "enum": ["text", "image", "audio", "document", "voice"] },
+        "mediaUrl": { "type": "string" },
+        "fileName": { "type": "string" },
+        "fileSize": { "type": "number" },
+        "readBy": { "type": "array", "items": { "type": "string" } },
+        "reactions": { "type": "object" },
+        "isPinned": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "senderId", "type", "createdAt"]
+    },
+    "Note": {
+      "title": "Note",
+      "description": "A note or document",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "type": { "type": "string", "enum": ["text", "voice", "document"] },
+        "labels": { "type": "array", "items": { "type": "string" } },
+        "folderId": { "type": "string" },
+        "isPinned": { "type": "boolean" },
+        "isArchived": { "type": "boolean" },
+        "isTrashed": { "type": "boolean" },
+        "attachments": { "type": "array", "items": { "type": "string" } },
+        "transcript": { "type": "string" },
+        "summary": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "content", "type", "createdAt", "updatedAt"]
+    },
+    "Reminder": {
+      "title": "Reminder",
+      "description": "A scheduled reminder",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "noteId": { "type": "string" },
+        "title": { "type": "string" },
+        "scheduledFor": { "type": "string", "format": "date-time" },
+        "isCompleted": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "scheduledFor", "isCompleted", "createdAt"]
+    },
+    "Folder": {
+      "title": "Folder",
+      "description": "A folder for organizing notes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "color": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "createdAt"]
+    },
+    "File": {
+      "title": "File",
+      "description": "An uploaded file or attachment",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "size": { "type": "number" },
+        "data": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "type", "size", "data", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles"
+    },
+    "/chats/{chatId}": {
+      "schema": { "$ref": "#/entities/Chat" },
+      "description": "Chats (private and group)"
+    },
+    "/chats/{chatId}/members/{userId}": {
+      "schema": { "$ref": "#/entities/ChatMember" },
+      "description": "Members of a chat"
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ChatMessage" },
+      "description": "Messages in a chat"
+    },
+    "/users/{userId}/notes/{noteId}": {
+      "schema": { "$ref": "#/entities/Note" },
+      "description": "User notes"
+    },
+    "/users/{userId}/reminders/{reminderId}": {
+      "schema": { "$ref": "#/entities/Reminder" },
+      "description": "User reminders"
+    },
+    "/users/{userId}/folders/{folderId}": {
+      "schema": { "$ref": "#/entities/Folder" },
+      "description": "User folders"
+    },
+    "/users/{userId}/files/{fileId}": {
+      "schema": { "$ref": "#/entities/File" },
+      "description": "User files"
+    }
+  }
+}

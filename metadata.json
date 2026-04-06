@@ -1,0 +1,9 @@
+{
+  "name": "OwambeNote AI 1.0",
+  "description": "A multi-purpose AI note-taking and file management platform with integrated AI assistants and voice communication.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
