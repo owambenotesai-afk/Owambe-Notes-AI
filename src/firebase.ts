@@ -4,13 +4,33 @@ import { getFirestore, collection, doc, setDoc, getDoc, getDocFromServer, getDoc
 import { getStorage } from 'firebase/storage';
 
 // Import the Firebase configuration
-// We use a standard import here. If the file is missing, Vite will show a build error which is better than a blank screen.
-import firebaseConfigData from '../firebase-applet-config.json';
+let firebaseConfig: any = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyANX-QhEDUhmzXkYZioJEXYiQOutSKWznA",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "gen-lang-client-0621244375.firebaseapp.com",
+  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || "https://gen-lang-client-0621244375-default-rtdb.firebaseio.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "gen-lang-client-0621244375",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "gen-lang-client-0621244375.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "30857321904",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:30857321904:web:e5b89a99908b1b567a0a75",
+  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || "ai-studio-d9072f4b-4a80-44eb-844c-46ad36d7ba74"
+};
 
-const firebaseConfig = firebaseConfigData;
+try {
+  // Use Vite's import.meta.glob to optionally import the file without breaking the build if missing
+  const localConfigs = import.meta.glob('../firebase-applet-config.json', { eager: true });
+  const configPath = '../firebase-applet-config.json';
+  if (localConfigs[configPath]) {
+    const localConfig = (localConfigs[configPath] as any).default || localConfigs[configPath];
+    if (localConfig && Object.keys(localConfig).length > 0) {
+      firebaseConfig = { ...firebaseConfig, ...localConfig };
+    }
+  }
+} catch (e) {
+  console.warn('Local firebase config not found, using environment variables or defaults.');
+}
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId);
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const storage = getStorage(app);
 
 // Suppress Firestore BloomFilter warnings

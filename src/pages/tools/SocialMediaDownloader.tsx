@@ -49,9 +49,12 @@ export const SocialMediaDownloader = () => {
         body: JSON.stringify({ url }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('The download backend is not available in this environment (e.g., static hosting on Netlify). Please deploy as a full-stack app or use a supported backend.');
+        }
         throw new Error(data.error || 'Failed to fetch video data');
       }
 
