@@ -4,10 +4,11 @@ import { db } from '../firebase';
 import { collection, query, where, onSnapshot, orderBy, addDoc, serverTimestamp, doc, updateDoc, getDoc, writeBatch, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../firebase';
-import { Send, ArrowLeft, MoreVertical, Check, CheckCheck, FileText, X, Smile, Paperclip, Image as ImageIcon, Mic } from 'lucide-react';
+import { Send, ArrowLeft, MoreVertical, Check, CheckCheck, FileText, X, Smile, Paperclip, Image as ImageIcon, Mic, Phone } from 'lucide-react';
+import { UserProfileModal } from './UserProfileModal';
 
 export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [uploadingMedia, setUploadingMedia] = useState(false);
@@ -17,6 +18,23 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [otherUser, setOtherUser] = useState<any>(null);
+
+  useEffect(() => {
+    if (!chat || !user) return;
+
+    const isGroup = chat.type === 'group';
+    const otherUserId = chat.participantIds.find((id: string) => id !== user.uid);
+
+    if (!isGroup && otherUserId) {
+      const unsubOtherUser = onSnapshot(doc(db, 'users_public', otherUserId), (docSnap) => {
+        if (docSnap.exists()) {
+          setOtherUser(docSnap.data());
+        }
+      });
+      return () => unsubOtherUser();
+    }
+  }, [chat, user]);
 
   useEffect(() => {
     if (!chat || !user) return;
@@ -198,14 +216,29 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
 
   const isGroup = chat.type === 'group';
   const otherUserId = chat.participantIds.find((id: string) => id !== user.uid);
-  const chatName = isGroup ? chat.name : (chat.participantNames?.[otherUserId] || 'Unknown User');
-  const chatPhoto = isGroup ? chat.photoURL : chat.participantPhotos?.[otherUserId];
+  const chatName = isGroup ? chat.name : (otherUser?.username || chat.participantNames?.[otherUserId] || 'Unknown User');
+  const chatPhoto = isGroup ? chat.photoURL : (otherUser?.photoURL || chat.participantPhotos?.[otherUserId]);
 
   const typingUsers = chat?.typing ? Object.entries(chat.typing)
     .filter(([uid, isTyping]) => isTyping && uid !== user?.uid)
     .map(([uid]) => chat.participantNames?.[uid] || 'Someone') : [];
 
   const isRequest = chat?.type === 'private' && chat.lastMessage?.senderId !== user?.uid && !chat.acceptedBy?.includes(user?.uid) && chat.lastMessage;
+
+  const formatLastSeen = (lastSeenStr: string) => {
+    if (!lastSeenStr) return '';
+    const lastSeen = new Date(lastSeenStr);
+    const now = new Date();
+    const diffMins = Math.floor((now.getTime() - lastSeen.getTime()) / 60000);
+    
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return lastSeen.toLocaleDateString();
+  };
 
   const handleAcceptRequest = async () => {
     if (!user || !chat) return;
@@ -223,6 +256,7 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState<string | null>(null);
   const [newMemberUsername, setNewMemberUsername] = useState('');
   const [addingMember, setAddingMember] = useState(false);
   const isArchived = chat.archivedBy?.includes(user?.uid);
@@ -334,12 +368,49 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
     }
   };
 
+  const initiateCall = async () => {
+    if (!user || !chat || isGroup) return;
+    try {
+      const otherUserId = chat.participantIds.find((id: string) => id !== user.uid);
+      const callDocRef = await addDoc(collection(db, 'calls'), {
+        callerId: user.uid,
+        callerName: profile?.username || 'Someone',
+        callerPhoto: profile?.photoURL || '',
+        receiverId: otherUserId,
+        chatId: chat.id,
+        status: 'ringing',
+        createdAt: serverTimestamp()
+      });
+      
+      const event = new CustomEvent('start-call', { 
+        detail: { 
+          callId: callDocRef.id,
+          receiverName: chatName,
+          receiverPhoto: chatPhoto
+        } 
+      });
+      window.dispatchEvent(event);
+    } catch (error) {
+      console.error('Error initiating call:', error);
+    }
+  };
+
   return (
     <div className="flex h-full bg-white dark:bg-stone-950 relative">
       <div className={`flex flex-col h-full w-full ${showGroupInfo ? 'hidden md:flex md:w-2/3' : ''}`}>
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 sticky top-0 z-10">
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => isGroup && setShowGroupInfo(true)}>
+          <div 
+            className="flex items-center gap-3 cursor-pointer" 
+            onClick={() => {
+              if (isGroup) {
+                setShowGroupInfo(true);
+              } else {
+                const otherUserId = chat.participantIds.find((id: string) => id !== user.uid);
+                if (otherUserId) setShowProfileModal(otherUserId);
+              }
+            }}
+          >
             <button onClick={(e) => { e.stopPropagation(); onBack(); }} className="md:hidden p-2 -ml-2 text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-900 rounded-xl">
               <ArrowLeft className="w-5 h-5" />
             </button>
@@ -354,44 +425,71 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
               <h2 className="font-semibold text-stone-900 dark:text-stone-100 hover:underline">{chatName}</h2>
               <p className="text-xs text-stone-500 dark:text-stone-400">
                 {typingUsers.length > 0 
-                  ? `${typingUsers.join(', ')} ${typingUsers.length > 1 ? 'are' : 'is'} typing...` 
-                  : isGroup ? `${chat.participantIds.length} members` : 'Online'}
+                  ? <span className="text-[#00BFA5]">{`${typingUsers.join(', ')} ${typingUsers.length > 1 ? 'are' : 'is'} typing...`}</span>
+                  : isGroup 
+                    ? `${chat.participantIds.length} members` 
+                    : otherUser?.online 
+                      ? <span className="text-[#00BFA5]">Online</span> 
+                      : otherUser?.lastSeen 
+                        ? `Last seen ${formatLastSeen(otherUser.lastSeen)}` 
+                        : 'Offline'}
               </p>
             </div>
           </div>
-          <div className="relative">
-            <button 
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="p-2 text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-900 rounded-xl"
-            >
-              <MoreVertical className="w-5 h-5" />
-            </button>
-            {isMenuOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl shadow-lg py-1 z-20">
-                {isGroup && (
+          <div className="flex items-center gap-2">
+            {!isGroup && (
+              <button 
+                onClick={initiateCall}
+                className="p-2 text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-900 rounded-xl transition-colors"
+                title="Voice Call"
+              >
+                <Phone className="w-5 h-5" />
+              </button>
+            )}
+            <div className="relative">
+              <button 
+                onClick={() => setIsMenuOpen(!isMenuOpen)}
+                className="p-2 text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-900 rounded-xl"
+              >
+                <MoreVertical className="w-5 h-5" />
+              </button>
+              {isMenuOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl shadow-lg py-1 z-20">
+                  {isGroup && (
+                    <button 
+                      onClick={() => { setShowGroupInfo(true); setIsMenuOpen(false); }}
+                      className="w-full text-left px-4 py-2 text-sm text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800"
+                    >
+                      Group Info
+                    </button>
+                  )}
                   <button 
-                    onClick={() => { setShowGroupInfo(true); setIsMenuOpen(false); }}
+                    onClick={toggleArchive}
                     className="w-full text-left px-4 py-2 text-sm text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800"
                   >
-                    Group Info
+                    {isArchived ? 'Unarchive Chat' : 'Archive Chat'}
                   </button>
-                )}
-                <button 
-                  onClick={toggleArchive}
-                  className="w-full text-left px-4 py-2 text-sm text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800"
-                >
-                  {isArchived ? 'Unarchive Chat' : 'Archive Chat'}
-                </button>
-              </div>
-            )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-stone-50 dark:bg-stone-950">
         {messages.map((msg, index) => {
+          if (msg.type === 'system') {
+            return (
+              <div key={msg.id} className="flex justify-center my-4">
+                <div className="bg-stone-100 dark:bg-stone-800/50 text-stone-500 dark:text-stone-400 text-xs px-3 py-1 rounded-full text-center max-w-[80%]">
+                  {msg.text}
+                </div>
+              </div>
+            );
+          }
+
           const isMine = msg.senderId === user.uid;
-          const showAvatar = isGroup && !isMine && (index === 0 || messages[index - 1].senderId !== msg.senderId);
+          const showAvatar = isGroup && !isMine && (index === 0 || messages[index - 1].senderId !== msg.senderId || messages[index - 1].type === 'system');
           
           return (
             <div key={msg.id} className={`flex gap-2 group ${isMine ? 'flex-row-reverse' : ''}`}>
@@ -603,7 +701,10 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
                 )}
               </div>
               <h2 className="text-xl font-bold text-stone-900 dark:text-stone-100 mb-1">{chatName}</h2>
-              <p className="text-sm text-stone-500 dark:text-stone-400">{chat.participantIds.length} members</p>
+              <p className="text-sm text-stone-500 dark:text-stone-400 mb-4">{chat.participantIds.length} members</p>
+              {chat.description && (
+                <p className="text-sm text-stone-600 dark:text-stone-300 text-center px-4">{chat.description}</p>
+              )}
             </div>
             
             <div className="p-4">
@@ -612,7 +713,10 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
                 <div className="space-y-3">
                   {chat.participantIds.map((id: string) => (
                     <div key={id} className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
+                      <div 
+                        className="flex items-center gap-3 cursor-pointer"
+                        onClick={() => setShowProfileModal(id)}
+                      >
                         <div className="w-8 h-8 rounded-full bg-stone-200 dark:bg-stone-800 flex items-center justify-center overflow-hidden">
                           {chat.participantPhotos?.[id] ? (
                             <img src={chat.participantPhotos[id]} alt={chat.participantNames?.[id]} className="w-full h-full object-cover" />
@@ -621,7 +725,7 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
                           )}
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-stone-900 dark:text-stone-100">
+                          <p className="text-sm font-medium text-stone-900 dark:text-stone-100 hover:underline">
                             {id === user?.uid ? 'You' : chat.participantNames?.[id] || 'Unknown User'}
                           </p>
                         </div>
@@ -641,6 +745,46 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
               
               {userRole === 'admin' && (
                 <div className="mb-6">
+                  <h4 className="text-xs font-bold text-stone-400 dark:text-stone-500 uppercase tracking-wider mb-3">Edit Group</h4>
+                  <div className="space-y-3 mb-6">
+                    <input
+                      type="text"
+                      value={chatName}
+                      onChange={async (e) => {
+                        await updateDoc(doc(db, 'chats', chat.id), { name: e.target.value });
+                      }}
+                      placeholder="Group Name"
+                      className="w-full bg-stone-100 dark:bg-stone-900 border-none rounded-xl py-2 px-3 text-sm focus:ring-2 focus:ring-[#00BFA5] outline-none text-stone-900 dark:text-stone-100"
+                    />
+                    <textarea
+                      value={chat.description || ''}
+                      onChange={async (e) => {
+                        await updateDoc(doc(db, 'chats', chat.id), { description: e.target.value });
+                      }}
+                      placeholder="Group Description"
+                      className="w-full bg-stone-100 dark:bg-stone-900 border-none rounded-xl py-2 px-3 text-sm focus:ring-2 focus:ring-[#00BFA5] outline-none text-stone-900 dark:text-stone-100 resize-none h-20"
+                    />
+                    <div className="flex items-center gap-2">
+                      <label className="flex-1 cursor-pointer bg-stone-100 dark:bg-stone-900 hover:bg-stone-200 dark:hover:bg-stone-800 transition-colors rounded-xl py-2 px-3 text-sm text-center text-stone-700 dark:text-stone-300 font-medium">
+                        Change Photo
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const storageRef = ref(storage, `group_photos/${chat.id}_${Date.now()}`);
+                              await uploadBytes(storageRef, file);
+                              const url = await getDownloadURL(storageRef);
+                              await updateDoc(doc(db, 'chats', chat.id), { photoURL: url });
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  </div>
+
                   <h4 className="text-xs font-bold text-stone-400 dark:text-stone-500 uppercase tracking-wider mb-3">Add Member</h4>
                   <form onSubmit={handleAddMember} className="flex gap-2 mb-6">
                     <input
@@ -680,6 +824,13 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
             </div>
           </div>
         </div>
+      )}
+
+      {showProfileModal && (
+        <UserProfileModal 
+          userId={showProfileModal} 
+          onClose={() => setShowProfileModal(null)} 
+        />
       )}
     </div>
   );

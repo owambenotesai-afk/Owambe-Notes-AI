@@ -65,9 +65,11 @@ export const Settings = () => {
         return;
       }
 
-      if (username !== profile?.username) {
+      const newUsername = username.toLowerCase();
+
+      if (newUsername !== profile?.username) {
         const { collection, query, where, getDocs } = await import('firebase/firestore');
-        const q = query(collection(db, 'users_public'), where('username', '==', username.toLowerCase()));
+        const q = query(collection(db, 'users_public'), where('username', '==', newUsername));
         const snapshot = await getDocs(q);
         if (!snapshot.empty) {
           toast.error('Username is already taken');
@@ -75,23 +77,69 @@ export const Settings = () => {
         }
       }
 
+      const { collection, query, where, getDocs, serverTimestamp } = await import('firebase/firestore');
       const batch = writeBatch(db);
       const userRef = doc(db, `users/${user.uid}`);
       const publicRef = doc(db, `users_public/${user.uid}`);
 
       batch.update(userRef, { 
-        username: username.toLowerCase(),
+        username: newUsername,
         bio,
       });
       batch.update(publicRef, { 
-        username: username.toLowerCase(),
+        username: newUsername,
         bio,
       });
+
+      // If username changed, update chats and send notifications
+      if (newUsername !== profile?.username) {
+        const chatsQuery = query(collection(db, 'chats'), where('participantIds', 'array-contains', user.uid));
+        const chatsSnapshot = await getDocs(chatsQuery);
+
+        chatsSnapshot.docs.forEach(chatDoc => {
+          const chatData = chatDoc.data();
+          const chatRef = doc(db, 'chats', chatDoc.id);
+          
+          const systemMsgText = `${profile.username} changed their username to ${newUsername}`;
+          
+          batch.update(chatRef, {
+            [`participantNames.${user.uid}`]: newUsername,
+            lastMessage: {
+              text: systemMsgText,
+              senderId: 'system',
+              createdAt: serverTimestamp(),
+              type: 'system'
+            },
+            updatedAt: serverTimestamp()
+          });
+
+          const messageRef = doc(collection(db, `chats/${chatDoc.id}/messages`));
+          batch.set(messageRef, {
+            senderId: 'system',
+            text: systemMsgText,
+            type: 'system',
+            createdAt: serverTimestamp()
+          });
+
+          chatData.participantIds.forEach((id: string) => {
+            if (id !== user.uid) {
+              const notifRef = doc(collection(db, 'notifications'));
+              batch.set(notifRef, {
+                userId: id,
+                type: 'username_change',
+                message: systemMsgText,
+                read: false,
+                createdAt: serverTimestamp()
+              });
+            }
+          });
+        });
+      }
 
       await batch.commit();
       
       toast.success('Profile updated successfully');
-      setProfile({ ...profile, username: username.toLowerCase(), bio });
+      setProfile({ ...profile, username: newUsername, bio });
       setIsEditing(false);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`);
@@ -111,6 +159,7 @@ export const Settings = () => {
       setUploading(true);
       setIsCropperOpen(false);
       
+      const { collection, query, where, getDocs } = await import('firebase/firestore');
       const batch = writeBatch(db);
       const userRef = doc(db, `users/${user.uid}`);
       const publicRef = doc(db, `users_public/${user.uid}`);
@@ -118,6 +167,18 @@ export const Settings = () => {
       const updateData = cropTarget === 'profile' ? { photoURL: base64Url } : { coverURL: base64Url };
       batch.update(userRef, updateData);
       batch.update(publicRef, updateData);
+
+      if (cropTarget === 'profile') {
+        const chatsQuery = query(collection(db, 'chats'), where('participantIds', 'array-contains', user.uid));
+        const chatsSnapshot = await getDocs(chatsQuery);
+
+        chatsSnapshot.docs.forEach(chatDoc => {
+          const chatRef = doc(db, 'chats', chatDoc.id);
+          batch.update(chatRef, {
+            [`participantPhotos.${user.uid}`]: base64Url
+          });
+        });
+      }
 
       await batch.commit();
       

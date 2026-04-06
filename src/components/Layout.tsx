@@ -1,18 +1,127 @@
-import React from 'react';
-import { Outlet, NavLink } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { AIAssistantPopup } from './AIAssistantPopup';
 import { 
   User, 
   Globe, 
   MessageSquare, 
   FileText, 
-  Calendar
+  Calendar,
+  Phone
 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { db } from '../firebase';
+import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { CallModal } from './CallModal';
 
 export const Layout = () => {
+  const location = useLocation();
+  const { user } = useAuth();
+  const [incomingCall, setIncomingCall] = useState<any>(null);
+  const [activeCallId, setActiveCallId] = useState<string | null>(null);
+  const [isCaller, setIsCaller] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const callsQuery = query(
+      collection(db, 'calls'),
+      where('receiverId', '==', user.uid),
+      where('status', '==', 'ringing')
+    );
+
+    const unsubscribe = onSnapshot(callsQuery, (snapshot) => {
+      if (!snapshot.empty) {
+        const callDoc = snapshot.docs[0];
+        setIncomingCall({ id: callDoc.id, ...callDoc.data() });
+      } else {
+        setIncomingCall(null);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  const acceptCall = async () => {
+    if (!incomingCall) return;
+    try {
+      await updateDoc(doc(db, 'calls', incomingCall.id), { status: 'accepted' });
+      setActiveCallId(incomingCall.id);
+      setIsCaller(false);
+      setIncomingCall(null);
+    } catch (error) {
+      console.error('Error accepting call:', error);
+    }
+  };
+
+  const rejectCall = async () => {
+    if (!incomingCall) return;
+    try {
+      await updateDoc(doc(db, 'calls', incomingCall.id), { status: 'rejected' });
+      setIncomingCall(null);
+    } catch (error) {
+      console.error('Error rejecting call:', error);
+    }
+  };
+
+  // Listen for custom event to start a call
+  const [outgoingCallInfo, setOutgoingCallInfo] = useState<{name?: string, photo?: string} | null>(null);
+
+  useEffect(() => {
+    const handleStartCall = (e: CustomEvent) => {
+      setActiveCallId(e.detail.callId);
+      setIsCaller(true);
+      setOutgoingCallInfo({
+        name: e.detail.receiverName,
+        photo: e.detail.receiverPhoto
+      });
+    };
+    window.addEventListener('start-call' as any, handleStartCall);
+    return () => window.removeEventListener('start-call' as any, handleStartCall);
+  }, []);
+
   return (
     <div className="flex flex-col h-screen bg-stone-50 dark:bg-stone-950 text-stone-900 dark:text-stone-100 overflow-hidden relative">
       
+      {/* Incoming Call Overlay */}
+      {incomingCall && !activeCallId && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-stone-900 text-white p-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-top-4">
+          <div className="w-12 h-12 rounded-full bg-stone-800 flex items-center justify-center overflow-hidden">
+            {incomingCall.callerPhoto ? (
+              <img src={incomingCall.callerPhoto} alt={incomingCall.callerName} className="w-full h-full object-cover" />
+            ) : (
+              <User className="w-6 h-6 text-stone-400" />
+            )}
+          </div>
+          <div>
+            <h4 className="font-bold">{incomingCall.callerName || 'Someone'}</h4>
+            <p className="text-sm text-stone-400">Incoming voice call...</p>
+          </div>
+          <div className="flex gap-2 ml-4">
+            <button onClick={rejectCall} className="p-3 bg-red-500 hover:bg-red-600 rounded-full transition-colors">
+              <Phone className="w-5 h-5 rotate-[135deg]" />
+            </button>
+            <button onClick={acceptCall} className="p-3 bg-emerald-500 hover:bg-emerald-600 rounded-full transition-colors animate-pulse">
+              <Phone className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Active Call Modal */}
+      {activeCallId && (
+        <CallModal 
+          callId={activeCallId} 
+          isCaller={isCaller} 
+          receiverName={isCaller ? outgoingCallInfo?.name : incomingCall?.callerName} 
+          receiverPhoto={isCaller ? outgoingCallInfo?.photo : incomingCall?.callerPhoto}
+          onClose={() => {
+            setActiveCallId(null);
+            setOutgoingCallInfo(null);
+          }} 
+        />
+      )}
+
       {/* Top Header */}
       <header className="h-16 bg-white/80 dark:bg-stone-900/80 backdrop-blur-md border-b border-stone-200 dark:border-stone-800 flex items-center justify-center px-6 sticky top-0 z-10 shrink-0">
         <div className="flex items-center gap-2">
@@ -82,7 +191,7 @@ export const Layout = () => {
       </nav>
       
       {/* Global AI Assistant Popup */}
-      <AIAssistantPopup />
+      {location.pathname === '/profile' && <AIAssistantPopup />}
     </div>
   );
 };
