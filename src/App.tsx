@@ -8,6 +8,7 @@ import { NoteEditor } from './pages/NoteEditor';
 import { Tools } from './pages/Tools';
 import { Settings } from './pages/Settings';
 import { Auth } from './pages/Auth';
+import { Toaster } from 'react-hot-toast';
 
 import { Chats } from './pages/Chats';
 
@@ -52,6 +53,7 @@ export default function App() {
       <AuthProvider>
         <ThemeApplier>
           <BrowserRouter>
+            <Toaster position="top-center" />
             <Routes>
               <Route path="/login" element={<Auth />} />
               <Route path="/signup" element={<Auth />} />

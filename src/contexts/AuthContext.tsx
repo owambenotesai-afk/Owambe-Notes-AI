@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, onAuthStateChanged, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
+import { User, onAuthStateChanged, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, updateEmail, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { auth, db, handleFirestoreError, OperationType, signInAnonymously } from '../firebase';
 import { doc, getDoc, setDoc, updateDoc, onSnapshot, query, collection, where, getDocs, writeBatch } from 'firebase/firestore';
 
@@ -12,6 +12,8 @@ interface AuthContextType {
   signInWithEmail: (identifier: string, password: string) => Promise<void>;
   signInAsGuest: () => Promise<void>;
   resendVerificationEmail: () => Promise<void>;
+  updateEmailAddress: (newEmail: string, currentPassword?: string) => Promise<void>;
+  updateUserPassword: (currentPassword: string, newPassword: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -23,6 +25,8 @@ const AuthContext = createContext<AuthContextType>({
   signInWithEmail: async () => {},
   signInAsGuest: async () => {},
   resendVerificationEmail: async () => {},
+  updateEmailAddress: async () => {},
+  updateUserPassword: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -302,8 +306,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateEmailAddress = async (newEmail: string, currentPassword?: string) => {
+    if (!auth.currentUser) throw new Error('No user logged in');
+    
+    // Re-authenticate if password is provided
+    if (currentPassword && auth.currentUser.email) {
+      const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPassword);
+      await reauthenticateWithCredential(auth.currentUser, credential);
+    }
+    
+    await updateEmail(auth.currentUser, newEmail);
+    
+    // Update email in Firestore
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'users', auth.currentUser.uid), { email: newEmail });
+    await batch.commit();
+  };
+
+  const updateUserPassword = async (currentPassword: string, newPassword: string) => {
+    if (!auth.currentUser) throw new Error('No user logged in');
+    if (!auth.currentUser.email) throw new Error('User has no email');
+    
+    // Re-authenticate
+    const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPassword);
+    await reauthenticateWithCredential(auth.currentUser, credential);
+    
+    await updatePassword(auth.currentUser, newPassword);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading, logOut, signUpWithEmail, signInWithEmail, signInAsGuest, resendVerificationEmail }}>
+    <AuthContext.Provider value={{ user, profile, loading, logOut, signUpWithEmail, signInWithEmail, signInAsGuest, resendVerificationEmail, updateEmailAddress, updateUserPassword }}>
       {children}
     </AuthContext.Provider>
   );
