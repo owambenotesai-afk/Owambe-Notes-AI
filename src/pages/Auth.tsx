@@ -135,10 +135,12 @@ export const Auth = () => {
           {!isLogin && (
             <>
               <div>
-                <label className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1">Username</label>
+                <label htmlFor="username" className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1">Username</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500 font-medium">@</span>
                   <input
+                    id="username"
+                    name="username"
                     type="text"
                     required
                     value={username}
@@ -153,10 +155,12 @@ export const Auth = () => {
 
           {isLogin ? (
             <div>
-              <label className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1">Username or Email</label>
+              <label htmlFor="login-email" className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1">Username or Email</label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400 dark:text-stone-500" />
                 <input
+                  id="login-email"
+                  name="login-email"
                   type="text"
                   required
                   value={email}
@@ -168,10 +172,12 @@ export const Auth = () => {
             </div>
           ) : (
             <div>
-              <label className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1">Email</label>
+              <label htmlFor="signup-email" className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1">Email</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400 dark:text-stone-500" />
                 <input
+                  id="signup-email"
+                  name="signup-email"
                   type="email"
                   required
                   value={email}
@@ -184,10 +190,12 @@ export const Auth = () => {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1">Password</label>
+            <label htmlFor="password" className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1">Password</label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400 dark:text-stone-500" />
               <input
+                id="password"
+                name="password"
                 type="password"
                 required
                 value={password}
@@ -201,10 +209,12 @@ export const Auth = () => {
           {!isLogin && (
             <>
               <div>
-                <label className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1">Confirm Password</label>
+                <label htmlFor="confirm-password" className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1">Confirm Password</label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400 dark:text-stone-500" />
                   <input
+                    id="confirm-password"
+                    name="confirm-password"
                     type="password"
                     required
                     value={confirmPassword}

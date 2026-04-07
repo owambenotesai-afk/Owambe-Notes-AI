@@ -30,11 +30,9 @@ export const StoriesBar = () => {
         });
       });
 
-      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-
       const storiesQuery = query(
         collection(db, 'stories'),
-        where('createdAt', '>=', twentyFourHoursAgo)
+        where('expiresAt', '>', new Date())
       );
 
       const unsubscribe = onSnapshot(storiesQuery, (snapshot) => {
@@ -81,18 +79,25 @@ export const StoriesBar = () => {
 
     setIsUploading(true);
     try {
-      const storageRef = ref(storage, `stories/${user.uid}_${Date.now()}_${file.name}`);
+      const extension = file.name.split('.').pop() || 'jpg';
+      const storageRef = ref(storage, `stories/${user.uid}/${Date.now()}.${extension}`);
+      
+      console.log('Uploading story to storage...');
       await uploadBytes(storageRef, file);
+      console.log('Upload success');
+      
       const url = await getDownloadURL(storageRef);
 
+      console.log('Saving story to Firestore...');
       await addDoc(collection(db, 'stories'), {
         userId: user.uid,
         username: profile?.username || 'User',
         userPhoto: profile?.photoURL || '',
         mediaUrl: url,
-        createdAt: new Date(),
+        createdAt: serverTimestamp(),
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
       });
+      console.log('Firestore write success');
     } catch (error) {
       console.error('Error uploading story:', error);
       alert('Failed to upload story');
