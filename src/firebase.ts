@@ -5,15 +5,27 @@ import { getStorage } from 'firebase/storage';
 
 // Import the Firebase configuration
 let firebaseConfig: any = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyANX-QhEDUhmzXkYZioJEXYiQOutSKWznA",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "gen-lang-client-0621244375.firebaseapp.com",
-  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || "https://gen-lang-client-0621244375-default-rtdb.firebaseio.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "gen-lang-client-0621244375",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "gen-lang-client-0621244375.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "30857321904",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:30857321904:web:e5b89a99908b1b567a0a75",
-  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || "ai-studio-d9072f4b-4a80-44eb-844c-46ad36d7ba74"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
+
+// Check for missing environment variables
+const requiredEnvVars = [
+  'VITE_FIREBASE_API_KEY',
+  'VITE_FIREBASE_AUTH_DOMAIN',
+  'VITE_FIREBASE_PROJECT_ID',
+  'VITE_FIREBASE_STORAGE_BUCKET',
+  'VITE_FIREBASE_MESSAGING_SENDER_ID',
+  'VITE_FIREBASE_APP_ID'
+];
+
+const missingEnvVars = requiredEnvVars.filter(
+  (envVar) => !import.meta.env[envVar]
+);
 
 try {
   // Use Vite's import.meta.glob to optionally import the file without breaking the build if missing
@@ -29,14 +41,27 @@ try {
   console.warn('Local firebase config not found, using environment variables or defaults.');
 }
 
+if (missingEnvVars.length > 0 && !firebaseConfig.apiKey) {
+  console.warn(`Missing Firebase environment variables: ${missingEnvVars.join(', ')}. Please check your .env file.`);
+}
+
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+console.log('Firebase App initialized successfully');
+
+export const db = firebaseConfig.firestoreDatabaseId 
+  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+  : getFirestore(app);
+console.log('Firestore initialized successfully');
+
 export const storage = getStorage(app);
+console.log('Firebase Storage initialized successfully');
 
 // Suppress Firestore BloomFilter warnings
 setLogLevel('error');
 
 export const auth = getAuth(app);
+console.log('Firebase Auth initialized successfully');
+
 export const googleProvider = new GoogleAuthProvider();
 
 export { signInAnonymously };
@@ -105,6 +130,9 @@ async function testConnection() {
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
       console.error("Please check your Firebase configuration. ", error.message);
+    } else if (error instanceof Error && (error.message.toLowerCase().includes('permission') || error.message.toLowerCase().includes('missing or insufficient permissions'))) {
+      // Connection successful, but permission denied as expected
+      console.log("Firebase connection successful (permission denied on test document).");
     } else {
       console.error("Firebase connection test failed: ", error);
     }

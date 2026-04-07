@@ -42,6 +42,12 @@ export const CallModal = ({ callId, isCaller, isVideo = false, receiverName, rec
       // Get local media
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: isVideo });
+        
+        if (pc.signalingState === 'closed') {
+          stream.getTracks().forEach(track => track.stop());
+          return;
+        }
+
         setLocalStream(stream);
         localStreamRef.current = stream;
         if (localVideoRef.current) {
