@@ -65,7 +65,7 @@ export const Layout = () => {
   };
 
   // Listen for custom event to start a call
-  const [outgoingCallInfo, setOutgoingCallInfo] = useState<{name?: string, photo?: string} | null>(null);
+  const [outgoingCallInfo, setOutgoingCallInfo] = useState<{name?: string, photo?: string, isVideo?: boolean} | null>(null);
 
   useEffect(() => {
     const handleStartCall = (e: CustomEvent) => {
@@ -73,7 +73,8 @@ export const Layout = () => {
       setIsCaller(true);
       setOutgoingCallInfo({
         name: e.detail.receiverName,
-        photo: e.detail.receiverPhoto
+        photo: e.detail.receiverPhoto,
+        isVideo: e.detail.isVideo
       });
     };
     window.addEventListener('start-call' as any, handleStartCall);
@@ -95,7 +96,7 @@ export const Layout = () => {
           </div>
           <div>
             <h4 className="font-bold">{incomingCall.callerName || 'Someone'}</h4>
-            <p className="text-sm text-stone-400">Incoming voice call...</p>
+            <p className="text-sm text-stone-400">Incoming {incomingCall.isVideo ? 'video' : 'voice'} call...</p>
           </div>
           <div className="flex gap-2 ml-4">
             <button onClick={rejectCall} className="p-3 bg-red-500 hover:bg-red-600 rounded-full transition-colors">
@@ -113,6 +114,7 @@ export const Layout = () => {
         <CallModal 
           callId={activeCallId} 
           isCaller={isCaller} 
+          isVideo={isCaller ? outgoingCallInfo?.isVideo : incomingCall?.isVideo}
           receiverName={isCaller ? outgoingCallInfo?.name : incomingCall?.callerName} 
           receiverPhoto={isCaller ? outgoingCallInfo?.photo : incomingCall?.callerPhoto}
           onClose={() => {

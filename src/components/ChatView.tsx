@@ -4,7 +4,7 @@ import { db } from '../firebase';
 import { collection, query, where, onSnapshot, orderBy, addDoc, serverTimestamp, doc, updateDoc, getDoc, writeBatch, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../firebase';
-import { Send, ArrowLeft, MoreVertical, Check, CheckCheck, FileText, X, Smile, Paperclip, Image as ImageIcon, Mic, Phone } from 'lucide-react';
+import { Send, ArrowLeft, MoreVertical, Check, CheckCheck, FileText, X, Smile, Paperclip, Image as ImageIcon, Mic, Phone, Video } from 'lucide-react';
 import { UserProfileModal } from './UserProfileModal';
 
 export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) => {
@@ -59,7 +59,10 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
         unreadMessages.forEach(docSnap => {
           const data = docSnap.data();
           const readBy = data.readBy || [];
-          batch.update(docSnap.ref, { readBy: [...readBy, user.uid] });
+          batch.update(docSnap.ref, { 
+            readBy: [...readBy, user.uid],
+            status: 'read'
+          });
         });
         batch.commit().catch(console.error);
       }
@@ -121,7 +124,9 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
         text: messageText,
         type: messageType,
         createdAt: serverTimestamp(),
-        readBy: [user.uid]
+        readBy: [user.uid],
+        deliveredTo: [user.uid],
+        status: 'sent'
       };
 
       await addDoc(collection(db, `chats/${chat.id}/messages`), messageData);
@@ -189,7 +194,9 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
         fileName: file.name,
         fileSize: file.size,
         createdAt: serverTimestamp(),
-        readBy: [user.uid]
+        readBy: [user.uid],
+        deliveredTo: [user.uid],
+        status: 'sent'
       };
 
       await addDoc(collection(db, `chats/${chat.id}/messages`), messageData);
@@ -368,7 +375,7 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
     }
   };
 
-  const initiateCall = async () => {
+  const initiateCall = async (isVideo: boolean = false) => {
     if (!user || !chat || isGroup) return;
     try {
       const otherUserId = chat.participantIds.find((id: string) => id !== user.uid);
@@ -379,6 +386,7 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
         receiverId: otherUserId,
         chatId: chat.id,
         status: 'ringing',
+        isVideo,
         createdAt: serverTimestamp()
       });
       
@@ -386,7 +394,8 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
         detail: { 
           callId: callDocRef.id,
           receiverName: chatName,
-          receiverPhoto: chatPhoto
+          receiverPhoto: chatPhoto,
+          isVideo
         } 
       });
       window.dispatchEvent(event);
@@ -438,13 +447,22 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
           </div>
           <div className="flex items-center gap-2">
             {!isGroup && (
-              <button 
-                onClick={initiateCall}
-                className="p-2 text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-900 rounded-xl transition-colors"
-                title="Voice Call"
-              >
-                <Phone className="w-5 h-5" />
-              </button>
+              <>
+                <button 
+                  onClick={() => initiateCall(true)}
+                  className="p-2 text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-900 rounded-xl transition-colors"
+                  title="Video Call"
+                >
+                  <Video className="w-5 h-5" />
+                </button>
+                <button 
+                  onClick={() => initiateCall(false)}
+                  className="p-2 text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-900 rounded-xl transition-colors"
+                  title="Voice Call"
+                >
+                  <Phone className="w-5 h-5" />
+                </button>
+              </>
             )}
             <div className="relative">
               <button 
@@ -527,7 +545,9 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
                       {msg.createdAt?.toDate ? msg.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                     </span>
                     {isMine && (
-                      msg.readBy?.length > 1 ? <CheckCheck className="w-3 h-3 text-emerald-400 dark:text-emerald-500" /> : <Check className="w-3 h-3" />
+                      msg.readBy?.length > 1 ? <CheckCheck className="w-4 h-4 text-[#00BFA5] dark:text-[#00BFA5]" /> : 
+                      msg.deliveredTo?.length > 1 ? <CheckCheck className="w-4 h-4 text-stone-400 dark:text-stone-500" /> : 
+                      <Check className="w-4 h-4 text-stone-400 dark:text-stone-500" />
                     )}
                   </div>
                 </div>

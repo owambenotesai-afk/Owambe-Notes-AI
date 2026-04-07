@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
-import { collection, query, where, onSnapshot, orderBy, collectionGroup, getDocs, addDoc, serverTimestamp, doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, collectionGroup, getDocs, addDoc, serverTimestamp, doc, setDoc, getDoc, updateDoc, writeBatch, limit } from 'firebase/firestore';
 import { Search, Plus, Users, MessageSquare, MoreVertical, Image, FileText, Mic, Send, ArrowLeft, Check, CheckCheck, Bell } from 'lucide-react';
 import { ChatView } from '../components/ChatView';
 import { NewChatModal } from '../components/NewChatModal';
@@ -132,6 +132,13 @@ export const Chats = () => {
     }
   };
 
+  const prevChatsRef = useRef<Record<string, number>>({});
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    audioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3');
+  }, []);
+
   useEffect(() => {
     if (!user) return;
 
@@ -141,9 +148,61 @@ export const Chats = () => {
       orderBy('updatedAt', 'desc')
     );
 
-    const unsubscribeChats = onSnapshot(chatsQuery, (chatsSnapshot) => {
-      const chatsData = chatsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const unsubscribeChats = onSnapshot(chatsQuery, async (chatsSnapshot) => {
+      const chatsData = chatsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
       setChats(chatsData);
+
+      let playSound = false;
+
+      chatsData.forEach(async (chat) => {
+        if (chat.lastMessage && chat.lastMessage.senderId !== user.uid) {
+          const lastMessageTime = chat.lastMessage.createdAt?.toMillis?.() || 0;
+          const prevTime = prevChatsRef.current[chat.id] || 0;
+
+          if (lastMessageTime > prevTime && prevTime !== 0) {
+            playSound = true;
+          }
+          prevChatsRef.current[chat.id] = lastMessageTime;
+
+          // Mark messages as delivered
+          try {
+            const msgsQuery = query(
+              collection(db, `chats/${chat.id}/messages`),
+              orderBy('createdAt', 'desc'),
+              limit(20)
+            );
+            const msgsSnap = await getDocs(msgsQuery);
+            if (!msgsSnap.empty) {
+              const batch = writeBatch(db);
+              let hasUpdates = false;
+              msgsSnap.docs.forEach(docSnap => {
+                const data = docSnap.data();
+                if (data.senderId !== user.uid) {
+                  const deliveredTo = data.deliveredTo || [];
+                  if (!deliveredTo.includes(user.uid)) {
+                    batch.update(docSnap.ref, { 
+                      deliveredTo: [...deliveredTo, user.uid],
+                      status: data.status === 'read' ? 'read' : 'delivered'
+                    });
+                    hasUpdates = true;
+                  }
+                }
+              });
+              if (hasUpdates) {
+                await batch.commit();
+              }
+            }
+          } catch (error) {
+            console.error('Error marking messages as delivered:', error);
+          }
+        } else if (chat.lastMessage) {
+           prevChatsRef.current[chat.id] = chat.lastMessage.createdAt?.toMillis?.() || 0;
+        }
+      });
+
+      if (playSound && audioRef.current) {
+        audioRef.current.play().catch(e => console.error('Error playing sound:', e));
+      }
     });
 
     return () => unsubscribeChats();

@@ -45,19 +45,28 @@ export const StoriesBar = () => {
         let myLatestStory = null;
 
         allStories.forEach(story => {
+          const storyTime = story.createdAt?.toMillis ? story.createdAt.toMillis() : (story.createdAt?.getTime ? story.createdAt.getTime() : Date.now());
+          
           if (story.userId === user.uid) {
-            if (!myLatestStory || story.createdAt > myLatestStory.createdAt) {
+            const myLatestTime = myLatestStory?.createdAt?.toMillis ? myLatestStory.createdAt.toMillis() : (myLatestStory?.createdAt?.getTime ? myLatestStory.createdAt.getTime() : 0);
+            if (!myLatestStory || storyTime > myLatestTime) {
               myLatestStory = story;
             }
           } else if (contactIds.has(story.userId)) {
-            if (!groupedStories.has(story.userId) || story.createdAt > groupedStories.get(story.userId).createdAt) {
+            const existingStory = groupedStories.get(story.userId);
+            const existingTime = existingStory ? (existingStory.createdAt?.toMillis ? existingStory.createdAt.toMillis() : (existingStory.createdAt?.getTime ? existingStory.createdAt.getTime() : 0)) : 0;
+            if (!existingStory || storyTime > existingTime) {
               groupedStories.set(story.userId, story);
             }
           }
         });
 
         setMyStory(myLatestStory);
-        setStories(Array.from(groupedStories.values()).sort((a, b) => b.createdAt - a.createdAt));
+        setStories(Array.from(groupedStories.values()).sort((a, b) => {
+          const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt?.getTime ? a.createdAt.getTime() : 0);
+          const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt?.getTime ? b.createdAt.getTime() : 0);
+          return timeB - timeA;
+        }));
       });
 
       return () => unsubscribe();
@@ -81,7 +90,7 @@ export const StoriesBar = () => {
         username: profile?.username || 'User',
         userPhoto: profile?.photoURL || '',
         mediaUrl: url,
-        createdAt: serverTimestamp(),
+        createdAt: new Date(),
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
       });
     } catch (error) {
