@@ -44,7 +44,10 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
       orderBy('createdAt', 'asc')
     );
 
+    let isSubscribed = true;
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!isSubscribed) return;
       const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setMessages(msgs);
 
@@ -66,6 +69,18 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
         });
         batch.commit().catch(console.error);
       }
+    }, async (error) => {
+      console.error('Error in messages onSnapshot:', error);
+      if (!isSubscribed) return;
+      // Fallback to getDocs
+      try {
+        const snapshot = await getDocs(q);
+        if (!isSubscribed) return;
+        const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setMessages(msgs);
+      } catch (err) {
+        console.error('Error in messages getDocs fallback:', err);
+      }
     });
 
     // Fetch user role
@@ -73,7 +88,7 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
       try {
         const memberRef = doc(db, `chats/${chat.id}/members`, user.uid);
         const memberSnap = await getDoc(memberRef);
-        if (memberSnap.exists()) {
+        if (memberSnap.exists() && isSubscribed) {
           setUserRole(memberSnap.data().role);
         }
       } catch (error) {
@@ -82,7 +97,10 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
     };
     fetchRole();
 
-    return () => unsubscribe();
+    return () => {
+      isSubscribed = false;
+      unsubscribe();
+    };
   }, [chat, user]);
 
   useEffect(() => {

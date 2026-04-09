@@ -23,28 +23,21 @@ export const NewChatModal = ({ onClose, onChatCreated }: { onClose: () => void, 
       setLoading(true);
       try {
         const { or } = await import('firebase/firestore');
-        const usersRef = collection(db, 'users_public');
+        const usersRef = collection(db, 'users');
         
-        // Search by username or exact userId
+        // Search by exact username or exact uid
         const q = query(
           usersRef, 
           or(
-            where('username', '>=', searchQuery.toLowerCase()),
-            where('userId', '==', searchQuery)
+            where('username', '==', searchQuery),
+            where('uid', '==', searchQuery)
           )
         );
         
         const snapshot = await getDocs(q);
         const results = snapshot.docs
           .map(doc => ({ uid: doc.id, ...doc.data() } as any))
-          .filter(u => u.uid !== user.uid) // Exclude self
-          .filter(u => {
-            // Client-side filter to ensure the username actually starts with the query
-            // since Firestore >= also returns things that are alphabetically after
-            const usernameMatch = u.username?.toLowerCase().startsWith(searchQuery.toLowerCase());
-            const userIdMatch = u.userId === searchQuery;
-            return usernameMatch || userIdMatch;
-          });
+          .filter(u => u.uid !== user.uid); // Exclude self
           
         setSearchResults(results);
       } catch (error) {

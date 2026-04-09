@@ -144,12 +144,19 @@ export const Chats = () => {
 
     const chatsQuery = query(
       collection(db, 'chats'),
-      where('participantIds', 'array-contains', user.uid),
-      orderBy('updatedAt', 'desc')
+      where('participantIds', 'array-contains', user.uid)
     );
 
     const unsubscribeChats = onSnapshot(chatsQuery, async (chatsSnapshot) => {
       const chatsData = chatsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+      
+      // Sort client-side to avoid hiding chats without updatedAt
+      chatsData.sort((a, b) => {
+        const timeA = a.updatedAt?.toMillis?.() || a.createdAt?.toMillis?.() || 0;
+        const timeB = b.updatedAt?.toMillis?.() || b.createdAt?.toMillis?.() || 0;
+        return timeB - timeA;
+      });
+      
       setChats(chatsData);
 
       let playSound = false;

@@ -37,9 +37,7 @@ service cloud.firestore {
     }
 
     function isValidChat(data) {
-      return hasRequiredFields(['type']) &&
-             (!('createdAt' in data) || data.createdAt is string || data.createdAt is timestamp) &&
-             (!('updatedAt' in data) || data.updatedAt is string || data.updatedAt is timestamp) &&
+      return hasRequiredFields(['type', 'createdAt', 'updatedAt']) &&
              (!('id' in data) || (data.id is string && data.id.size() > 0 && data.id.size() < 100)) &&
              data.type in ['private', 'group'] &&
              (!('participantIds' in data) || (data.participantIds is list && data.participantIds.size() <= 100)) &&
@@ -53,7 +51,9 @@ service cloud.firestore {
              (!('settings' in data) || (data.settings is map)) &&
              (!('typing' in data) || (data.typing is map)) &&
              (!('archivedBy' in data) || (data.archivedBy is list)) &&
-             (!('acceptedBy' in data) || (data.acceptedBy is list));
+             (!('acceptedBy' in data) || (data.acceptedBy is list)) &&
+             (data.createdAt is string || data.createdAt is timestamp) &&
+             (data.updatedAt is string || data.updatedAt is timestamp);
     }
 
     function isValidChatMember(data) {
@@ -74,8 +74,6 @@ service cloud.firestore {
              (!('fileName' in data) || (data.fileName is string && data.fileName.size() < 500)) &&
              (!('fileSize' in data) || (data.fileSize is number && data.fileSize >= 0)) &&
              (!('readBy' in data) || (data.readBy is list && data.readBy.size() <= 20000)) &&
-             (!('deliveredTo' in data) || (data.deliveredTo is list && data.deliveredTo.size() <= 20000)) &&
-             (!('status' in data) || (data.status is string && data.status.size() < 50)) &&
              (!('reactions' in data) || (data.reactions is map)) &&
              (!('isPinned' in data) || data.isPinned is bool) &&
              (data.createdAt is string || data.createdAt is timestamp);
@@ -171,7 +169,7 @@ service cloud.firestore {
       function isParticipant() {
         return isAuthenticated() && (
           (resource != null && 'participantIds' in resource.data && request.auth.uid in resource.data.participantIds) ||
-          (exists(/databases/$(database)/documents/chats/$(chatId)) && 'participantIds' in get(/databases/$(database)/documents/chats/$(chatId)).data && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participantIds) ||
+          (exists(/databases/$(database)/documents/chats/$(chatId)) && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participantIds) ||
           exists(/databases/$(database)/documents/chats/$(chatId)/members/$(request.auth.uid))
         );
       }
@@ -214,7 +212,7 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isOwner(userId);
+      allow read: if isAuthenticated();
       allow create: if isOwner(userId) && isValidUserProfile(request.resource.data) && uidUnchanged();
       allow update: if isOwner(userId) && isValidUserProfile(request.resource.data) && uidNotModified() && request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if isOwner(userId);

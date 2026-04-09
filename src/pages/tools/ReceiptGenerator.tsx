@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { collection, addDoc } from 'firebase/firestore';
+import { numberToWords } from '../../utils/numberToWords';
 
 interface ReceiptItem {
   id: string;
@@ -26,9 +27,9 @@ const CURRENCIES = [
   { code: 'BRL', symbol: 'R$', name: 'Brazilian Real' },
   { code: 'ZAR', symbol: 'R', name: 'South African Rand' },
   { code: 'NGN', symbol: '₦', name: 'Nigerian Naira' },
-  { code: 'MXN', symbol: '$', name: 'Mexican Peso' },
+  { code: 'GHS', symbol: 'GH₵', name: 'Ghanaian Cedi' },
+  { code: 'KES', symbol: 'KSh', name: 'Kenyan Shilling' },
   { code: 'SGD', symbol: 'S$', name: 'Singapore Dollar' },
-  { code: 'HKD', symbol: 'HK$', name: 'Hong Kong Dollar' },
   { code: 'NZD', symbol: 'NZ$', name: 'New Zealand Dollar' },
   { code: 'SEK', symbol: 'kr', name: 'Swedish Krona' },
   { code: 'KRW', symbol: '₩', name: 'South Korean Won' },
@@ -45,9 +46,17 @@ export const ReceiptGenerator = () => {
   const [businessAddress, setBusinessAddress] = useState('123 Main St, City, Country');
   const [logo, setLogo] = useState<string | null>(null);
   
+  const [invoiceType, setInvoiceType] = useState('SALES INVOICE');
+  const [dealerEmail, setDealerEmail] = useState('');
+  const [dealerPhone, setDealerPhone] = useState('');
+  
   const [customerName, setCustomerName] = useState('John Doe');
+  const [customerAddress, setCustomerAddress] = useState('');
   const [receiptNumber, setReceiptNumber] = useState(`REC-${Math.floor(Math.random() * 10000)}`);
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  const [customerSignature, setCustomerSignature] = useState<string | null>(null);
+  const [managerSignature, setManagerSignature] = useState<string | null>(null);
   
   const [currency, setCurrency] = useState(CURRENCIES[0]);
   const [currencySearch, setCurrencySearch] = useState('');
@@ -99,6 +108,17 @@ export const ReceiptGenerator = () => {
     }
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, setter: React.Dispatch<React.SetStateAction<string | null>>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setter(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const removeLogo = () => {
     setLogo(null);
   };
@@ -119,7 +139,7 @@ export const ReceiptGenerator = () => {
     // Header
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(24);
-    doc.text('RECEIPT', rightAlign, currentY + 10, { align: 'right' });
+    doc.text(invoiceType, rightAlign, currentY + 10, { align: 'right' });
     
     if (logo) {
       try {
@@ -141,6 +161,8 @@ export const ReceiptGenerator = () => {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.text(businessAddress, margin, currentY + 7);
+    if (dealerEmail) doc.text(dealerEmail, margin, currentY + 14);
+    if (dealerPhone) doc.text(dealerPhone, margin, currentY + 21);
     
     // Receipt Details
     doc.setFont('helvetica', 'bold');
@@ -148,13 +170,14 @@ export const ReceiptGenerator = () => {
     doc.setFont('helvetica', 'normal');
     doc.text(`Date: ${date}`, rightAlign, currentY + 7, { align: 'right' });
     
-    currentY += 25;
+    currentY += 30;
     
     // Customer Info
     doc.setFont('helvetica', 'bold');
     doc.text('Bill To:', margin, currentY);
     doc.setFont('helvetica', 'normal');
     doc.text(customerName, margin, currentY + 7);
+    if (customerAddress) doc.text(customerAddress, margin, currentY + 14);
     
     currentY += 25;
     
@@ -186,6 +209,37 @@ export const ReceiptGenerator = () => {
     doc.setFontSize(14);
     doc.text('Total:', rightAlign - 30, currentY + 2, { align: 'right' });
     doc.text(`${currency.code} ${calculateTotal().toFixed(2)}`, rightAlign - 2, currentY + 2, { align: 'right' });
+
+    // Amount in words
+    currentY += 15;
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(10);
+    doc.text(`Amount in words: ${numberToWords(calculateTotal(), currency.name)}`, margin, currentY);
+
+    // Signatures
+    currentY += 30;
+    if (customerSignature) {
+      try {
+        doc.addImage(customerSignature, margin, currentY, 40, 20);
+      } catch (e) {
+        console.error('Failed to add customer signature to PDF', e);
+      }
+    }
+    doc.setDrawColor(0, 0, 0);
+    doc.line(margin, currentY + 20, margin + 40, currentY + 20);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.text('Customer Signature', margin, currentY + 25);
+
+    if (managerSignature) {
+      try {
+        doc.addImage(managerSignature, rightAlign - 40, currentY, 40, 20);
+      } catch (e) {
+        console.error('Failed to add manager signature to PDF', e);
+      }
+    }
+    doc.line(rightAlign - 40, currentY + 20, rightAlign, currentY + 20);
+    doc.text('Manager Signature', rightAlign - 40, currentY + 25);
 
     return doc;
   };
@@ -223,7 +277,7 @@ export const ReceiptGenerator = () => {
     ctx.fillStyle = '#000000';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText('RECEIPT', rightAlign, currentY + 10 * scale);
+    ctx.fillText(invoiceType, rightAlign, currentY + 10 * scale);
 
     if (logo) {
       try {
@@ -252,6 +306,8 @@ export const ReceiptGenerator = () => {
     ctx.fillStyle = '#000000';
     setFont('normal', 10);
     ctx.fillText(businessAddress, margin, currentY + 7 * scale);
+    if (dealerEmail) ctx.fillText(dealerEmail, margin, currentY + 14 * scale);
+    if (dealerPhone) ctx.fillText(dealerPhone, margin, currentY + 21 * scale);
 
     // Receipt Details
     setFont('bold', 10);
@@ -260,7 +316,7 @@ export const ReceiptGenerator = () => {
     setFont('normal', 10);
     ctx.fillText(`Date: ${date}`, rightAlign, currentY + 7 * scale);
 
-    currentY += 25 * scale;
+    currentY += 30 * scale;
 
     // Customer Info
     setFont('bold', 10);
@@ -268,6 +324,7 @@ export const ReceiptGenerator = () => {
     ctx.fillText('Bill To:', margin, currentY);
     setFont('normal', 10);
     ctx.fillText(customerName, margin, currentY + 7 * scale);
+    if (customerAddress) ctx.fillText(customerAddress, margin, currentY + 14 * scale);
 
     currentY += 25 * scale;
 
@@ -310,6 +367,57 @@ export const ReceiptGenerator = () => {
     ctx.textAlign = 'right';
     ctx.fillText('Total:', rightAlign - 30 * scale, currentY + 2 * scale);
     ctx.fillText(`${currency.code} ${calculateTotal().toFixed(2)}`, rightAlign - 2 * scale, currentY + 2 * scale);
+
+    // Amount in words
+    currentY += 15 * scale;
+    setFont('italic', 10);
+    ctx.textAlign = 'left';
+    ctx.fillText(`Amount in words: ${numberToWords(calculateTotal(), currency.name)}`, margin, currentY);
+
+    // Signatures
+    currentY += 30 * scale;
+    
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 1 * scale;
+
+    if (customerSignature) {
+      try {
+        const img = new Image();
+        img.src = customerSignature;
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+        });
+        ctx.drawImage(img, margin, currentY, 40 * scale, 20 * scale);
+      } catch (e) {
+        console.error('Failed to add customer signature to Canvas', e);
+      }
+    }
+    ctx.beginPath();
+    ctx.moveTo(margin, currentY + 20 * scale);
+    ctx.lineTo(margin + 40 * scale, currentY + 20 * scale);
+    ctx.stroke();
+    setFont('normal', 10);
+    ctx.fillText('Customer Signature', margin, currentY + 25 * scale);
+
+    if (managerSignature) {
+      try {
+        const img = new Image();
+        img.src = managerSignature;
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+        });
+        ctx.drawImage(img, rightAlign - 40 * scale, currentY, 40 * scale, 20 * scale);
+      } catch (e) {
+        console.error('Failed to add manager signature to Canvas', e);
+      }
+    }
+    ctx.beginPath();
+    ctx.moveTo(rightAlign - 40 * scale, currentY + 20 * scale);
+    ctx.lineTo(rightAlign, currentY + 20 * scale);
+    ctx.stroke();
+    ctx.fillText('Manager Signature', rightAlign - 40 * scale, currentY + 25 * scale);
 
     return canvas;
   };
@@ -355,16 +463,22 @@ export const ReceiptGenerator = () => {
         content: `Receipt for ${customerName} - Total: ${currency.symbol}${calculateTotal().toFixed(2)}`,
         type: 'receipt',
         data: {
+          invoiceType,
           businessName,
           businessNameColor,
           businessAddress,
+          dealerEmail,
+          dealerPhone,
           logo,
           customerName,
+          customerAddress,
           receiptNumber,
           date,
           currency,
           items,
-          total: calculateTotal()
+          total: calculateTotal(),
+          customerSignature,
+          managerSignature,
         },
         createdAt: now,
         updatedAt: now,
@@ -519,13 +633,44 @@ export const ReceiptGenerator = () => {
                       className="w-full px-3 md:px-4 py-2 bg-stone-50 dark:bg-stone-950 border border-stone-200 dark:border-stone-800 rounded-xl focus:ring-2 focus:ring-[#00BFA5] outline-none text-sm md:text-base"
                     />
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1 md:mb-2">Invoice Type</label>
+                    <select
+                      value={invoiceType}
+                      onChange={(e) => setInvoiceType(e.target.value)}
+                      className="w-full px-3 md:px-4 py-2 bg-stone-50 dark:bg-stone-950 border border-stone-200 dark:border-stone-800 rounded-xl focus:ring-2 focus:ring-[#00BFA5] outline-none text-sm md:text-base"
+                    >
+                      <option value="SALES INVOICE">SALES INVOICE</option>
+                      <option value="CREDIT SALES INVOICE">CREDIT SALES INVOICE</option>
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1 md:mb-2">Dealer Email</label>
+                      <input
+                        type="email"
+                        value={dealerEmail}
+                        onChange={(e) => setDealerEmail(e.target.value)}
+                        className="w-full px-3 md:px-4 py-2 bg-stone-50 dark:bg-stone-950 border border-stone-200 dark:border-stone-800 rounded-xl focus:ring-2 focus:ring-[#00BFA5] outline-none text-sm md:text-base"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1 md:mb-2">Dealer Phone</label>
+                      <input
+                        type="tel"
+                        value={dealerPhone}
+                        onChange={(e) => setDealerPhone(e.target.value)}
+                        className="w-full px-3 md:px-4 py-2 bg-stone-50 dark:bg-stone-950 border border-stone-200 dark:border-stone-800 rounded-xl focus:ring-2 focus:ring-[#00BFA5] outline-none text-sm md:text-base"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
             <div className="bg-white dark:bg-stone-900 p-5 md:p-6 rounded-3xl border border-stone-200 dark:border-stone-800 shadow-sm space-y-4 md:space-y-6">
               <h2 className="text-lg md:text-xl font-semibold text-stone-900 dark:text-stone-100">Receipt Details</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1 md:mb-2">Customer Name</label>
                   <input
@@ -535,6 +680,17 @@ export const ReceiptGenerator = () => {
                     className="w-full px-3 md:px-4 py-2 bg-stone-50 dark:bg-stone-950 border border-stone-200 dark:border-stone-800 rounded-xl focus:ring-2 focus:ring-[#00BFA5] outline-none text-sm md:text-base"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1 md:mb-2">Customer Address</label>
+                  <input
+                    type="text"
+                    value={customerAddress}
+                    onChange={(e) => setCustomerAddress(e.target.value)}
+                    className="w-full px-3 md:px-4 py-2 bg-stone-50 dark:bg-stone-950 border border-stone-200 dark:border-stone-800 rounded-xl focus:ring-2 focus:ring-[#00BFA5] outline-none text-sm md:text-base"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1 md:mb-2">Receipt Number</label>
                   <input
@@ -616,13 +772,64 @@ export const ReceiptGenerator = () => {
                 ))}
               </div>
             </div>
+
+            <div className="bg-white dark:bg-stone-900 p-5 md:p-6 rounded-3xl border border-stone-200 dark:border-stone-800 shadow-sm space-y-4 md:space-y-6">
+              <h2 className="text-lg md:text-xl font-semibold text-stone-900 dark:text-stone-100">Signatures</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div className="flex flex-col gap-2">
+                  <label className="block text-sm font-medium text-stone-700 dark:text-stone-300">Customer Signature</label>
+                  <div className="relative w-full h-32 rounded-xl border-2 border-dashed border-stone-300 dark:border-stone-700 flex items-center justify-center bg-stone-50 dark:bg-stone-950 overflow-hidden group">
+                    {customerSignature ? (
+                      <>
+                        <img src={customerSignature} alt="Customer Signature" className="w-full h-full object-contain p-2" />
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => setCustomerSignature(null)} className="p-1.5 bg-white text-red-600 rounded-lg hover:bg-red-50 transition-colors">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center w-full h-full cursor-pointer hover:bg-stone-100 dark:hover:bg-stone-900 transition-colors">
+                        <Upload className="w-6 h-6 text-stone-400 mb-1" />
+                        <span className="text-xs text-stone-500 font-medium">Upload Signature</span>
+                        <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setCustomerSignature)} className="hidden" />
+                      </label>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="block text-sm font-medium text-stone-700 dark:text-stone-300">Manager Signature</label>
+                  <div className="relative w-full h-32 rounded-xl border-2 border-dashed border-stone-300 dark:border-stone-700 flex items-center justify-center bg-stone-50 dark:bg-stone-950 overflow-hidden group">
+                    {managerSignature ? (
+                      <>
+                        <img src={managerSignature} alt="Manager Signature" className="w-full h-full object-contain p-2" />
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => setManagerSignature(null)} className="p-1.5 bg-white text-red-600 rounded-lg hover:bg-red-50 transition-colors">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center w-full h-full cursor-pointer hover:bg-stone-100 dark:hover:bg-stone-900 transition-colors">
+                        <Upload className="w-6 h-6 text-stone-400 mb-1" />
+                        <span className="text-xs text-stone-500 font-medium">Upload Signature</span>
+                        <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setManagerSignature)} className="hidden" />
+                      </label>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="space-y-6">
             <div className="bg-[#00BFA5] text-white p-6 rounded-3xl shadow-sm sticky top-6">
               <h3 className="text-base md:text-lg font-medium text-stone-100 mb-2">Total Amount</h3>
-              <div className="text-3xl md:text-4xl font-bold mb-6">
+              <div className="text-3xl md:text-4xl font-bold mb-2">
                 {currency.symbol}{calculateTotal().toFixed(2)}
+              </div>
+              <div className="text-sm text-stone-100/80 mb-6 italic">
+                {numberToWords(calculateTotal(), currency.name)}
               </div>
               
               <div className="space-y-3">
