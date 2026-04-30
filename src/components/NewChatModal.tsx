@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
-import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, setDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, setDoc, getDoc } from 'firebase/firestore';
 import { Search, X, UserPlus, Users, MessageSquare, Check, User } from 'lucide-react';
 
 export const NewChatModal = ({ onClose, onChatCreated }: { onClose: () => void, onChatCreated: (chat: any) => void }) => {
@@ -25,18 +25,24 @@ export const NewChatModal = ({ onClose, onChatCreated }: { onClose: () => void, 
         const { or } = await import('firebase/firestore');
         const usersRef = collection(db, 'users');
         
-        // Search by exact username or exact uid
-        const q = query(
-          usersRef, 
-          or(
-            where('username', '==', searchQuery),
-            where('uid', '==', searchQuery)
-          )
-        );
+        // Use "startsWith" search logic for Firestore
+        const searchInput = searchQuery.toLowerCase();
+        
+        let q;
+        if (searchQuery.length > 20) {
+          // If it looks like a uid
+          q = query(usersRef, where('uid', '==', searchQuery));
+        } else {
+          q = query(
+            usersRef,
+            where('username', '>=', searchInput),
+            where('username', '<=', searchInput + '\uf8ff')
+          );
+        }
         
         const snapshot = await getDocs(q);
         const results = snapshot.docs
-          .map(doc => ({ uid: doc.id, ...doc.data() } as any))
+          .map(doc => ({ uid: doc.id, ...(doc.data() as any) }))
           .filter(u => u.uid !== user.uid); // Exclude self
           
         setSearchResults(results);
@@ -56,34 +62,17 @@ export const NewChatModal = ({ onClose, onChatCreated }: { onClose: () => void, 
     setLoading(true);
 
     try {
-      // Check if private chat already exists
-      const chatsRef = collection(db, 'chats');
-      const q = query(
-        chatsRef, 
-        where('type', '==', 'private'),
-        where('participantIds', 'array-contains', user.uid)
-      );
-      
-      const snapshot = await getDocs(q);
-      let existingChat = null;
-      
-      for (const doc of snapshot.docs) {
-        const data = doc.data();
-        if (data.participantIds.includes(otherUser.uid)) {
-          existingChat = { id: doc.id, ...data };
-          break;
-        }
-      }
-
-      if (existingChat) {
-        onChatCreated(existingChat);
-        return;
-      }
-
-      // Create new private chat
-      // Generate a unique chatId by sorting UIDs
       const sortedUids = [user.uid, otherUser.uid].sort();
       const chatId = `${sortedUids[0]}_${sortedUids[1]}`;
+
+      // Check if private chat already exists
+      const chatDocRef = doc(db, 'chats', chatId);
+      const chatDoc = await getDoc(chatDocRef);
+
+      if (chatDoc.exists()) {
+        onChatCreated({ id: chatDoc.id, ...chatDoc.data()! });
+        return;
+      }
 
       await setDoc(doc(db, 'chats', chatId), {
         type: 'private',

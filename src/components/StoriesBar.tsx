@@ -3,7 +3,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { db, storage } from '../firebase';
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Plus, X, ChevronLeft, ChevronRight, Image as ImageIcon } from 'lucide-react';
+import { Plus, X, ChevronLeft, ChevronRight, Image as ImageIcon, Type, Palette } from 'lucide-react';
+import { BACKGROUND_PRESETS } from '../constants';
 
 export const StoriesBar = () => {
   const { user, profile } = useAuth();
@@ -11,6 +12,14 @@ export const StoriesBar = () => {
   const [myStory, setMyStory] = useState<any>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [viewingStoryIndex, setViewingStoryIndex] = useState<number | null>(null);
+  
+  // Story Creator State
+  const [isCreatorOpen, setIsCreatorOpen] = useState(false);
+  const [creatorMode, setCreatorMode] = useState<'options' | 'text' | 'image' | null>(null);
+  const [storyText, setStoryText] = useState('');
+  const [selectedBg, setSelectedBg] = useState(BACKGROUND_PRESETS[1]); // Purple dream default
+  const [showBgSelector, setShowBgSelector] = useState(false);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -65,13 +74,46 @@ export const StoriesBar = () => {
           const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt?.getTime ? b.createdAt.getTime() : 0);
           return timeB - timeA;
         }));
-      });
+      }, (error) => console.error('stories snapshot error:', error));
 
       return () => unsubscribe();
     };
 
     fetchStories();
   }, [user]);
+
+  useEffect(() => {
+    const handleOpenStoryCreator = () => {
+      setIsCreatorOpen(true);
+      setCreatorMode('options');
+    };
+    window.addEventListener('open-story-creator', handleOpenStoryCreator);
+    return () => window.removeEventListener('open-story-creator', handleOpenStoryCreator);
+  }, []);
+
+  const handleTextStorySubmit = async () => {
+    if (!storyText.trim() || !user) return;
+    
+    setIsUploading(true);
+    try {
+      await addDoc(collection(db, 'stories'), {
+        userId: user.uid,
+        username: profile?.username || 'User',
+        userPhoto: profile?.photoURL || '',
+        mediaUrl: '',
+        textContent: storyText.trim(),
+        backgroundClass: selectedBg.class,
+        createdAt: serverTimestamp(),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
+      });
+      setIsCreatorOpen(false);
+      setStoryText('');
+    } catch (error) {
+      alert('Failed to upload story');
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const handleUploadStory = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -103,6 +145,7 @@ export const StoriesBar = () => {
       alert('Failed to upload story');
     } finally {
       setIsUploading(false);
+      setIsCreatorOpen(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -116,11 +159,17 @@ export const StoriesBar = () => {
         <div className="flex flex-col items-center gap-1 flex-shrink-0 cursor-pointer relative">
           <div 
             className={`w-14 h-14 rounded-full p-[2px] ${myStory ? 'bg-gradient-to-tr from-emerald-400 to-[#00BFA5]' : 'bg-stone-200 dark:bg-stone-800'}`}
-            onClick={() => myStory ? setViewingStoryIndex(0) : fileInputRef.current?.click()}
+            onClick={() => myStory ? setViewingStoryIndex(0) : setIsCreatorOpen(true)}
           >
             <div className="w-full h-full rounded-full border-2 border-white dark:border-stone-950 overflow-hidden bg-stone-100 dark:bg-stone-900 flex items-center justify-center relative">
               {myStory ? (
-                <img src={myStory.mediaUrl} alt="My Story" className="w-full h-full object-cover" />
+                myStory.mediaUrl ? (
+                  <img src={myStory.mediaUrl} alt="My Story" className="w-full h-full object-cover" />
+                ) : (
+                  <div className={`w-full h-full flex items-center justify-center text-[10px] font-bold ${myStory.backgroundClass || 'bg-stone-800 text-white'}`}>
+                    Aa
+                  </div>
+                )
               ) : profile?.photoURL ? (
                 <img src={profile.photoURL} alt="Me" className="w-full h-full object-cover opacity-50" />
               ) : (
@@ -158,8 +207,14 @@ export const StoriesBar = () => {
             onClick={() => setViewingStoryIndex(myStory ? index + 1 : index)}
           >
             <div className="w-14 h-14 rounded-full p-[2px] bg-gradient-to-tr from-emerald-400 to-[#00BFA5]">
-              <div className="w-full h-full rounded-full border-2 border-white dark:border-stone-950 overflow-hidden bg-stone-100 dark:bg-stone-900">
-                <img src={story.userPhoto || story.mediaUrl} alt={story.username} className="w-full h-full object-cover" />
+              <div className="w-full h-full rounded-full border-2 border-white dark:border-stone-950 overflow-hidden bg-stone-100 dark:bg-stone-900 flex items-center justify-center">
+                {story.userPhoto || story.mediaUrl ? (
+                  <img src={story.userPhoto || story.mediaUrl} alt={story.username} className="w-full h-full object-cover" />
+                ) : (
+                  <div className={`w-full h-full flex items-center justify-center text-[10px] font-bold ${story.backgroundClass || 'bg-stone-800 text-white'}`}>
+                    Aa
+                  </div>
+                )}
               </div>
             </div>
             <span className="text-xs text-stone-600 dark:text-stone-400 font-medium truncate w-16 text-center">
@@ -176,6 +231,100 @@ export const StoriesBar = () => {
           initialIndex={viewingStoryIndex} 
           onClose={() => setViewingStoryIndex(null)} 
         />
+      )}
+
+      {/* Story Creator Modal */}
+      {isCreatorOpen && (
+        <div className="fixed inset-0 z-[120] bg-white dark:bg-stone-900 flex flex-col pt-safe">
+          <div className="h-14 flex items-center justify-between px-4 border-b border-stone-200 dark:border-stone-800">
+            <button onClick={() => {
+              if (creatorMode === 'text') setCreatorMode('options');
+              else setIsCreatorOpen(false);
+            }} className="text-stone-900 dark:text-stone-100">
+              <X className="w-6 h-6" />
+            </button>
+            <span className="font-semibold text-stone-900 dark:text-stone-100">
+              {creatorMode === 'options' ? 'Create Story' : 'Text Story'}
+            </span>
+            {creatorMode === 'text' ? (
+              <button 
+                onClick={handleTextStorySubmit}
+                disabled={!storyText.trim() || isUploading}
+                className="font-semibold text-[#00BFA5] disabled:opacity-50"
+              >
+                {isUploading ? 'Posting...' : 'Post'}
+              </button>
+            ) : (
+              <div className="w-6" />
+            )}
+          </div>
+          
+          <div className="flex-1 flex flex-col relative overflow-hidden">
+            {creatorMode === 'options' && (
+              <div className="flex-1 flex flex-col items-center justify-center p-8 gap-6">
+                <div 
+                  className="w-full max-w-sm aspect-[4/5] rounded-3xl bg-gradient-to-br from-indigo-500 to-purple-600 flex flex-col items-center justify-center text-white cursor-pointer hover:opacity-90 transition-opacity shadow-lg"
+                  onClick={() => setCreatorMode('text')}
+                >
+                  <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center mb-4">
+                    <Type className="w-8 h-8" />
+                  </div>
+                  <span className="font-semibold text-xl">Text Story</span>
+                </div>
+                
+                <div 
+                  className="w-full max-w-sm aspect-[4/5] rounded-3xl bg-gradient-to-br from-emerald-400 to-[#00BFA5] flex flex-col items-center justify-center text-white cursor-pointer hover:opacity-90 transition-opacity shadow-lg"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center mb-4">
+                    <ImageIcon className="w-8 h-8" />
+                  </div>
+                  <span className="font-semibold text-xl">Photo Story</span>
+                </div>
+              </div>
+            )}
+            
+            {creatorMode === 'text' && (
+              <div className={`flex-1 flex flex-col ${selectedBg.class} transition-colors duration-300 relative`}>
+                <textarea
+                  value={storyText}
+                  onChange={(e) => setStoryText(e.target.value)}
+                  placeholder="Type something..."
+                  className="w-full flex-1 bg-transparent text-center text-3xl font-bold p-8 focus:outline-none resize-none flex items-center justify-center placeholder:text-white/50"
+                  autoFocus
+                />
+                
+                {/* Background Selector */}
+                <div className="absolute bottom-8 left-0 right-0 px-4">
+                   <div className="flex gap-3 overflow-x-auto p-2 no-scrollbar scroll-smooth snap-x snap-mandatory items-center justify-center">
+                     {BACKGROUND_PRESETS.map((bg) => (
+                       <button
+                         key={bg.id}
+                         onClick={(e) => {
+                           e.preventDefault();
+                           setSelectedBg(bg);
+                         }}
+                         className={`flex-shrink-0 w-12 h-12 rounded-full border-2 snap-center transition-all ${
+                           selectedBg.id === bg.id ? 'border-white scale-110 shadow-lg' : 'border-transparent scale-100 hover:scale-105'
+                         } ${bg.class}`}
+                         title={bg.name}
+                       >
+                         {bg.id === 'bg-none' && <span className="text-transparent">N</span>}
+                       </button>
+                     ))}
+                   </div>
+                </div>
+              </div>
+            )}
+            
+            {isUploading && (
+              <div className="absolute inset-0 bg-black/60 z-50 flex items-center justify-center flex-col gap-4">
+                <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin" />
+                <span className="text-white font-medium">Uploading...</span>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -282,13 +431,19 @@ const StoryViewer = ({ stories, initialIndex, onClose }: { stories: any[], initi
       <div className="absolute inset-y-0 left-0 w-1/3 z-0 cursor-pointer" onClick={handlePrev} />
       <div className="absolute inset-y-0 right-0 w-2/3 z-0 cursor-pointer" onClick={handleNext} />
 
-      {/* Image */}
-      <div className="flex-1 flex items-center justify-center p-4">
-        <img 
-          src={currentStory.mediaUrl} 
-          alt="Story" 
-          className="max-w-full max-h-full object-contain rounded-lg"
-        />
+      {/* Content */}
+      <div className={`flex-1 flex items-center justify-center p-4 relative z-[5] ${!currentStory.mediaUrl && currentStory.backgroundClass ? currentStory.backgroundClass : ''}`}>
+        {currentStory.mediaUrl ? (
+          <img 
+            src={currentStory.mediaUrl} 
+            alt="Story" 
+            className="max-w-full max-h-full object-contain rounded-lg"
+          />
+        ) : (
+          <div className="text-center p-8 max-w-full max-h-full overflow-y-auto">
+            <p className="whitespace-pre-wrap text-2xl sm:text-4xl font-semibold">{currentStory.textContent}</p>
+          </div>
+        )}
       </div>
     </div>
   );

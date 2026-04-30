@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
@@ -18,11 +18,16 @@ import { DocumentExport } from './pages/tools/DocumentExport';
 import { ImageToText } from './pages/tools/ImageToText';
 import { AudioTranscription } from './pages/tools/AudioTranscription';
 import { SocialMediaDownloader } from './pages/tools/SocialMediaDownloader';
+import { WalletNavigator } from './wallet/navigation/WalletNavigator';
+
+import { Posts } from './pages/Posts';
+import { Notifications } from './pages/Notifications';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-stone-50 text-stone-500">Loading...</div>;
-  if (!user || (!user.emailVerified && !user.isAnonymous)) return <Navigate to="/login" />;
+  if (!user || !user.emailVerified) return <Navigate to="/login" state={{ from: location.pathname + location.search }} replace />;
   return <>{children}</>;
 };
 
@@ -58,8 +63,11 @@ export default function App() {
               <Route path="/login" element={<Auth />} />
               <Route path="/signup" element={<Auth />} />
               <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-                <Route index element={<Dashboard />} />
+                <Route index element={<Navigate to="/posts" replace />} />
+                <Route path="notes" element={<Dashboard />} />
                 <Route path="notes/:id" element={<NoteEditor />} />
+                <Route path="posts" element={<Posts />} />
+                <Route path="notifications" element={<Notifications />} />
                 <Route path="chats" element={<Chats />} />
                 <Route path="tools" element={<Tools />} />
                 <Route path="tools/text-to-pdf" element={<TextToPdf />} />
@@ -71,7 +79,7 @@ export default function App() {
                 <Route path="settings" element={<Settings />} />
                 <Route path="profile" element={<Settings />} />
                 <Route path="folders" element={<div className="p-8 text-stone-500">Folders coming soon</div>} />
-                <Route path="reminders" element={<div className="p-8 text-stone-500">Reminders coming soon</div>} />
+                <Route path="wallet/*" element={<WalletNavigator />} />
               </Route>
             </Routes>
           </BrowserRouter>

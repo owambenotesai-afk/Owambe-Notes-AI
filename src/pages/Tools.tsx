@@ -7,6 +7,14 @@ export const Tools = () => {
   
   const tools = [
     {
+      id: 'personal-notes',
+      name: 'Personal Notes',
+      description: 'Create, manage, and organize your personal notes.',
+      icon: FileText,
+      color: 'bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400',
+      path: '/notes',
+    },
+    {
       id: 'social-media-downloader',
       name: 'Social Media Downloader',
       description: 'Download videos from Instagram, TikTok, YouTube, and more.',

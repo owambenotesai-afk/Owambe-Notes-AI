@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, onAuthStateChanged, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, updateEmail, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
-import { auth, db, handleFirestoreError, OperationType, signInAnonymously } from '../firebase';
+import { User, onAuthStateChanged, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, updateEmail, updatePassword, EmailAuthProvider, reauthenticateWithCredential, signInWithPopup } from 'firebase/auth';
+import { auth, db, handleFirestoreError, OperationType, signInAnonymously, googleProvider } from '../firebase';
 import { doc, getDoc, setDoc, updateDoc, onSnapshot, query, collection, where, getDocs, writeBatch } from 'firebase/firestore';
 
 interface AuthContextType {
@@ -11,6 +11,7 @@ interface AuthContextType {
   signUpWithEmail: (email: string, password: string, username: string) => Promise<void>;
   signInWithEmail: (identifier: string, password: string) => Promise<void>;
   signInAsGuest: () => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   resendVerificationEmail: () => Promise<void>;
   updateEmailAddress: (newEmail: string, currentPassword?: string) => Promise<void>;
   updateUserPassword: (currentPassword: string, newPassword: string) => Promise<void>;
@@ -24,6 +25,7 @@ const AuthContext = createContext<AuthContextType>({
   signUpWithEmail: async () => {},
   signInWithEmail: async () => {},
   signInAsGuest: async () => {},
+  signInWithGoogle: async () => {},
   resendVerificationEmail: async () => {},
   updateEmailAddress: async () => {},
   updateUserPassword: async () => {},
@@ -144,64 +146,74 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signUpWithEmail = async (email: string, password: string, username: string) => {
-    // Check if username is unique
-    const publicUsersRef = collection(db, 'users_public');
-    const q = query(publicUsersRef, where('username', '==', username));
-    const querySnapshot = await getDocs(q);
-    
-    if (!querySnapshot.empty) {
-      throw new Error('Username is already taken');
-    }
-
-    // Generate unique userId
-    let userId = generateUserId();
-    let isUnique = false;
-    while (!isUnique) {
-      const idQuery = query(publicUsersRef, where('userId', '==', userId));
-      const idSnapshot = await getDocs(idQuery);
-      if (idSnapshot.empty) {
-        isUnique = true;
-      } else {
-        userId = generateUserId();
-      }
-    }
-
+  const signUpWithEmail = async (email: string, password: string, rawUsername: string) => {
+    // Create the user first to authenticate, so database queries for uniqueness can run under isAuthenticated() rule
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
     
-    await sendEmailVerification(user);
+    try {
+      const username = rawUsername.toLowerCase();
+      // Check if username is unique
+      const publicUsersRef = collection(db, 'users_public');
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('username', '==', username));
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        throw new Error('Username is already taken');
+      }
 
-    const batch = writeBatch(db);
-    const now = new Date().toISOString();
+      // Generate unique userId
+      let userId = generateUserId();
+      let isUnique = false;
+      while (!isUnique) {
+        const idQuery = query(publicUsersRef, where('userId', '==', userId));
+        const idSnapshot = await getDocs(idQuery);
+        if (idSnapshot.empty) {
+          isUnique = true;
+        } else {
+          userId = generateUserId();
+        }
+      }
 
-    batch.set(doc(db, 'users', user.uid), {
-      uid: user.uid,
-      username,
-      email,
-      userId,
-      photoURL: '',
-      bio: '',
-      createdAt: now,
-      online: false, // Will be set to true upon verified login
-      lastSeen: now
-    });
+      await sendEmailVerification(user);
 
-    batch.set(doc(db, 'users_public', user.uid), {
-      uid: user.uid,
-      username,
-      userId,
-      photoURL: '',
-      bio: '',
-      createdAt: now,
-      online: false,
-      lastSeen: now
-    });
+      const batch = writeBatch(db);
+      const now = new Date().toISOString();
 
-    await batch.commit();
-    
-    // Sign out the user so they have to verify their email before logging in
-    await signOut(auth);
+      batch.set(doc(db, 'users', user.uid), {
+        uid: user.uid,
+        username, // now lowercase
+        email,
+        userId,
+        photoURL: '',
+        bio: '',
+        createdAt: now,
+        online: false, // Will be set to true upon verified login
+        lastSeen: now
+      });
+
+      batch.set(doc(db, 'users_public', user.uid), {
+        uid: user.uid,
+        username,
+        userId,
+        photoURL: '',
+        bio: '',
+        createdAt: now,
+        online: false,
+        lastSeen: now
+      });
+
+      await batch.commit();
+      
+      // Sign out the user so they have to verify their email before logging in
+      await signOut(auth);
+    } catch (err) {
+      if (user) {
+        await user.delete().catch(console.error);
+      }
+      throw err;
+    }
   };
 
   const signInWithEmail = async (identifier: string, password: string) => {
@@ -209,18 +221,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Check if identifier is an email or username
     if (!identifier.includes('@')) {
-      // It's a username, look up the email
-      const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('username', '==', identifier));
-      const querySnapshot = await getDocs(q);
-      
-      if (querySnapshot.empty) {
-        const error = new Error('User not found');
-        (error as any).code = 'auth/user-not-found';
-        throw error;
+      // Temporarily sign in anonymously to fetch email securely if rules require auth
+      let tempUserCredential = null;
+      if (!auth.currentUser) {
+         tempUserCredential = await signInAnonymously(auth);
       }
       
-      emailToUse = querySnapshot.docs[0].data().email;
+      try {
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('username', '==', identifier));
+        const querySnapshot = await getDocs(q);
+        
+        if (querySnapshot.empty) {
+          const error = new Error('User not found');
+          (error as any).code = 'auth/user-not-found';
+          throw error;
+        }
+        
+        emailToUse = querySnapshot.docs[0].data().email;
+      } finally {
+        if (tempUserCredential && auth.currentUser?.isAnonymous) {
+          // If we created a temporary anonymous user, we should log them out or just let them be transformed below?
+          // Using signInWithEmailAndPassword will replace the anonymous session automatically
+        }
+      }
     }
 
     const userCredential = await signInWithEmailAndPassword(auth, emailToUse, password);
@@ -300,6 +324,94 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const signInWithGoogle = async () => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+      const userRef = doc(db, 'users', user.uid);
+      const docSnap = await getDoc(userRef);
+      const now = new Date().toISOString();
+
+      if (!docSnap.exists()) {
+        let baseUsername = (user.email ? user.email.split('@')[0] : (user.displayName || 'user')).toLowerCase().replace(/[^a-z0-9_]/g, '');
+        if (!baseUsername) baseUsername = 'user' + generateUserId();
+        
+        let tempUsername = baseUsername;
+        let isUsernameUnique = false;
+        const usersRef = collection(db, 'users');
+        for (let i = 0; i < 10; i++) {
+          const q = query(usersRef, where('username', '==', tempUsername));
+          const snap = await getDocs(q);
+          if (snap.empty) {
+            isUsernameUnique = true;
+            break;
+          } else {
+            tempUsername = baseUsername + Math.floor(Math.random() * 1000);
+          }
+        }
+        if (!isUsernameUnique) tempUsername = baseUsername + generateUserId();
+
+        let userId = generateUserId();
+        let isUnique = false;
+        const publicUsersRef = collection(db, 'users_public');
+        while (!isUnique) {
+          const idQuery = query(publicUsersRef, where('userId', '==', userId));
+          const idSnapshot = await getDocs(idQuery);
+          if (idSnapshot.empty) {
+            isUnique = true;
+          } else {
+            userId = generateUserId();
+          }
+        }
+
+        const batch = writeBatch(db);
+        batch.set(doc(db, 'users', user.uid), {
+          uid: user.uid,
+          username: tempUsername,
+          email: user.email || '',
+          name: user.displayName || '',
+          userId,
+          photoURL: user.photoURL || '',
+          bio: '',
+          createdAt: now,
+          online: true,
+          lastSeen: now
+        });
+        batch.set(doc(db, 'users_public', user.uid), {
+          uid: user.uid,
+          username: tempUsername,
+          name: user.displayName || '',
+          userId,
+          photoURL: user.photoURL || '',
+          bio: '',
+          createdAt: now,
+          online: true,
+          lastSeen: now
+        });
+        await batch.commit();
+      } else {
+        const batch = writeBatch(db);
+        const data = docSnap.data();
+        batch.update(userRef, {
+          online: true,
+          lastSeen: now,
+          name: user.displayName || data?.name || '',
+          photoURL: user.photoURL || data?.photoURL || ''
+        });
+        batch.update(doc(db, 'users_public', user.uid), {
+          online: true,
+          lastSeen: now,
+          name: user.displayName || data?.name || '',
+          photoURL: user.photoURL || data?.photoURL || ''
+        });
+        await batch.commit();
+      }
+    } catch (error) {
+      console.error("Google Sign-In Error", error);
+      throw error;
+    }
+  };
+
   const resendVerificationEmail = async () => {
     if (auth.currentUser) {
       await sendEmailVerification(auth.currentUser);
@@ -335,7 +447,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, logOut, signUpWithEmail, signInWithEmail, signInAsGuest, resendVerificationEmail, updateEmailAddress, updateUserPassword }}>
+    <AuthContext.Provider value={{ user, profile, loading, logOut, signUpWithEmail, signInWithEmail, signInAsGuest, signInWithGoogle, resendVerificationEmail, updateEmailAddress, updateUserPassword }}>
       {children}
     </AuthContext.Provider>
   );

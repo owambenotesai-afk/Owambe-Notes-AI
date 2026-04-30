@@ -18,7 +18,7 @@ const ChatListItem = ({ chat, user, selectedChat, setSelectedChat }: { chat: any
       if (docSnap.exists()) {
         setOtherUser(docSnap.data());
       }
-    });
+    }, (error) => console.error(error));
     return () => unsub();
   }, [otherUserId, isGroup]);
 
@@ -41,7 +41,7 @@ const ChatListItem = ({ chat, user, selectedChat, setSelectedChat }: { chat: any
   };
 
   const isRequest = chat.type === 'private' && chat.lastMessage?.senderId !== user.uid && !chat.acceptedBy?.includes(user.uid) && chat.lastMessage;
-  const unreadCount = chat.lastMessage?.senderId !== user.uid && chat.lastMessage && (!chat.lastMessage.readBy || !chat.lastMessage.readBy.includes(user.uid)) ? 1 : 0; // Simplified unread count for now
+  const unreadCount = chat.lastMessage?.senderId !== user.uid && chat.lastMessage && chat.lastMessage.unread ? 1 : 0;
 
   const typingUsers = chat?.typing ? Object.entries(chat.typing)
     .filter(([uid, isTyping]) => isTyping && uid !== user?.uid)
@@ -77,7 +77,9 @@ const ChatListItem = ({ chat, user, selectedChat, setSelectedChat }: { chat: any
             ) : chat.lastMessage ? (
               <span className="flex items-center gap-1">
                 {chat.lastMessage.senderId === user.uid && (
-                  chat.lastMessage.readBy?.length > 1 ? <CheckCheck className="w-3 h-3 text-emerald-400 dark:text-emerald-500" /> : <Check className="w-3 h-3" />
+                  chat.lastMessage.status === 'seen' || chat.lastMessage.readBy?.length > 1 ? <CheckCheck className="w-3 h-3 text-[#34B7F1] dark:text-[#34B7F1]" /> : 
+                  chat.lastMessage.status === 'delivered' ? <CheckCheck className="w-3 h-3 text-stone-400 dark:text-stone-500" /> : 
+                  <Check className="w-3 h-3 text-stone-400 dark:text-stone-500" />
                 )}
                 {chat.lastMessage.type === 'image' ? '📷 Image' : chat.lastMessage.type === 'document' ? '📄 Document' : chat.lastMessage.type === 'voice' ? '🎤 Audio' : chat.lastMessage.text}
               </span>
@@ -119,7 +121,7 @@ export const Chats = () => {
     const unsubscribeNotifs = onSnapshot(notifQuery, (snapshot) => {
       const notifsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setNotifications(notifsData);
-    });
+    }, (error) => console.error(error));
 
     return () => unsubscribeNotifs();
   }, [user]);
@@ -182,19 +184,33 @@ export const Chats = () => {
             if (!msgsSnap.empty) {
               const batch = writeBatch(db);
               let hasUpdates = false;
+              let shouldUpdateLastMessageDelivered = false;
               msgsSnap.docs.forEach(docSnap => {
                 const data = docSnap.data();
                 if (data.senderId !== user.uid) {
-                  const deliveredTo = data.deliveredTo || [];
-                  if (!deliveredTo.includes(user.uid)) {
+                  if (data.status === 'sent') {
                     batch.update(docSnap.ref, { 
-                      deliveredTo: [...deliveredTo, user.uid],
-                      status: data.status === 'read' ? 'read' : 'delivered'
+                      status: 'delivered',
+                      deliveredAt: serverTimestamp()
                     });
                     hasUpdates = true;
+                    if (chat.lastMessage && chat.lastMessage.createdAt && data.createdAt) {
+                        try {
+                            if (chat.lastMessage.createdAt.toMillis() === data.createdAt.toMillis()) {
+                                shouldUpdateLastMessageDelivered = true;
+                            }
+                        } catch(e) {}
+                    }
                   }
                 }
               });
+              if (shouldUpdateLastMessageDelivered) {
+                 batch.update(doc(db, 'chats', chat.id), {
+                    'lastMessage.status': 'delivered',
+                    'lastMessage.deliveredAt': serverTimestamp()
+                 });
+                 hasUpdates = true;
+              }
               if (hasUpdates) {
                 await batch.commit();
               }
@@ -210,7 +226,7 @@ export const Chats = () => {
       if (playSound && audioRef.current) {
         audioRef.current.play().catch(e => console.error('Error playing sound:', e));
       }
-    });
+    }, (error) => console.error(error));
 
     return () => unsubscribeChats();
   }, [user]);

@@ -13,11 +13,35 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Hide scrollbar for clean UI */
-.scrollbar-hide::-webkit-scrollbar {
-    display: none;
+.hide-global-nav #global-nav {
+  display: none !important;
 }
+
 .scrollbar-hide {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Chrome, Safari and Opera */
+}
+
+@media (max-width: 768px) {
+  body {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+  body::-webkit-scrollbar {
+    display: none;
+  }
+  .mobile-scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .mobile-scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+input, textarea, select {
+  font-size: 16px !important;
 }

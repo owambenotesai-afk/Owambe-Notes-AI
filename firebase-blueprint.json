@@ -84,6 +84,9 @@
         "readBy": { "type": "array", "items": { "type": "string" } },
         "reactions": { "type": "object" },
         "isPinned": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["sent", "delivered", "seen"] },
+        "deliveredAt": { "type": "string", "format": "date-time" },
+        "seenAt": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "senderId", "type", "createdAt"]

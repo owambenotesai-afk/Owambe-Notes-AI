@@ -107,7 +107,7 @@ export const CallModal = ({ callId, isCaller, isVideo = false, receiverName, rec
           if (data?.status === 'accepted') {
             setCallStatus('accepted');
           }
-        });
+        }, (error) => console.error('call status error', error));
 
         // Listen for remote ICE candidates
         onSnapshot(receiverCandidatesCollection, (snapshot) => {
@@ -117,7 +117,7 @@ export const CallModal = ({ callId, isCaller, isVideo = false, receiverName, rec
               pc.addIceCandidate(candidate);
             }
           });
-        });
+        }, (error) => console.error('receiver cand error', error));
 
       } else {
         // Receiver logic
@@ -141,7 +141,7 @@ export const CallModal = ({ callId, isCaller, isVideo = false, receiverName, rec
 
             await updateDoc(callDocRef, { answer });
           }
-        });
+        }, (error) => console.error('receiver logic error', error));
 
         // Listen for remote ICE candidates
         onSnapshot(callerCandidatesCollection, (snapshot) => {
@@ -151,7 +151,7 @@ export const CallModal = ({ callId, isCaller, isVideo = false, receiverName, rec
               pc.addIceCandidate(candidate);
             }
           });
-        });
+        }, (error) => console.error('caller cand error', error));
       }
     };
 

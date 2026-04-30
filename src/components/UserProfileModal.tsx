@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../firebase';
-import { doc, getDoc } from 'firebase/firestore';
-import { X, User, Calendar, Circle } from 'lucide-react';
+import { doc, getDoc, collection, query, setDoc, deleteDoc, serverTimestamp, addDoc, getDocs } from 'firebase/firestore';
+import { X, User, Calendar, Circle, UserPlus, UserMinus } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { handleFirestoreError, OperationType } from '../firebase';
 
 interface UserProfileModalProps {
   userId: string;
@@ -9,9 +11,13 @@ interface UserProfileModalProps {
 }
 
 export const UserProfileModal = ({ userId, onClose }: UserProfileModalProps) => {
+  const { user } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followersCount, setFollowersCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -19,7 +25,23 @@ export const UserProfileModal = ({ userId, onClose }: UserProfileModalProps) => 
         const docRef = doc(db, `users_public/${userId}`);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          setProfile(docSnap.data());
+          const data = docSnap.data();
+          setProfile(data);
+          
+          if (user && user.uid !== userId) {
+            const followRef = await getDoc(doc(db, `users/${userId}/followers`, user.uid));
+            setIsFollowing(followRef.exists());
+          }
+          
+          // Get counts if not hidden by privacy
+          if (!data.hideFollowers) {
+             const fw = await getDocs(collection(db, `users/${userId}/followers`));
+             setFollowersCount(fw.size);
+          }
+          if (!data.hideFollowing) {
+             const fg = await getDocs(collection(db, `users/${userId}/following`));
+             setFollowingCount(fg.size);
+          }
         }
       } catch (error) {
         console.error('Error fetching profile:', error);
@@ -28,7 +50,37 @@ export const UserProfileModal = ({ userId, onClose }: UserProfileModalProps) => 
       }
     };
     fetchProfile();
-  }, [userId]);
+  }, [userId, user]);
+
+  const toggleFollow = async () => {
+    if (!user) return;
+    const followerRef = doc(db, `users/${userId}/followers`, user.uid);
+    const followingRef = doc(db, `users/${user.uid}/following`, userId);
+    
+    try {
+      if (isFollowing) {
+        await deleteDoc(followerRef);
+        await deleteDoc(followingRef);
+        setIsFollowing(false);
+        setFollowersCount(c => Math.max(0, c - 1));
+      } else {
+        await setDoc(followerRef, { userId: user.uid, createdAt: serverTimestamp() });
+        await setDoc(followingRef, { userId: userId, createdAt: serverTimestamp() });
+        setIsFollowing(true);
+        setFollowersCount(c => c + 1);
+        
+        await addDoc(collection(db, 'notifications'), {
+          userId: userId,
+          type: 'follow',
+          actorId: user.uid,
+          read: false,
+          createdAt: serverTimestamp()
+        });
+      }
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, `users/${userId}/followers`);
+    }
+  };
 
   const formatDate = (isoString: string) => {
     if (!isoString) return '';
@@ -86,15 +138,41 @@ export const UserProfileModal = ({ userId, onClose }: UserProfileModalProps) => 
             </div>
 
             <div className="pt-14">
-              <h2 className="text-2xl font-bold text-stone-900 dark:text-stone-100">
-                @{profile.username}
-              </h2>
-              
-              <div className="flex items-center gap-2 mt-1 text-sm text-stone-500 dark:text-stone-400">
-                <span className="flex items-center gap-1">
-                  <Circle className={`w-3 h-3 fill-current ${profile.online ? 'text-emerald-500' : 'text-stone-400'}`} />
-                  {profile.online ? 'Online' : 'Offline'}
-                </span>
+              <div className="flex items-start justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-stone-900 dark:text-stone-100">
+                    @{profile.username}
+                  </h2>
+                  <div className="flex items-center gap-2 mt-1 text-sm text-stone-500 dark:text-stone-400">
+                    <span className="flex items-center gap-1">
+                      <Circle className={`w-3 h-3 fill-current ${profile.online ? 'text-emerald-500' : 'text-stone-400'}`} />
+                      {profile.online ? 'Online' : 'Offline'}
+                    </span>
+                  </div>
+                </div>
+                {user && user.uid !== userId && (
+                   <button 
+                     onClick={toggleFollow}
+                     className={`px-4 py-1.5 rounded-full font-medium transition-colors border ${isFollowing ? 'border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700' : 'border-transparent bg-[#00BFA5] text-white hover:bg-[#009688]'}`}
+                   >
+                     {isFollowing ? 'Following' : 'Follow'}
+                   </button>
+                )}
+              </div>
+
+              <div className="flex gap-4 mt-4 mb-2 text-sm">
+                {!profile.hideFollowers && (
+                  <div className="flex flex-col">
+                    <span className="font-bold text-stone-900 dark:text-stone-100">{followersCount}</span>
+                    <span className="text-stone-500">Followers</span>
+                  </div>
+                )}
+                {!profile.hideFollowing && (
+                  <div className="flex flex-col">
+                    <span className="font-bold text-stone-900 dark:text-stone-100">{followingCount}</span>
+                    <span className="text-stone-500">Following</span>
+                  </div>
+                )}
               </div>
 
               {profile.bio && (

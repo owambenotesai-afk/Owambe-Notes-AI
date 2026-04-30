@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, signInAnonymously } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, getDoc, getDocFromServer, getDocs, updateDoc, deleteDoc, onSnapshot, query, where, orderBy, setLogLevel } from 'firebase/firestore';
+import { getFirestore, collection, doc, setDoc, getDoc, getDocFromServer, getDocs, updateDoc, deleteDoc, onSnapshot, query, where, orderBy, setLogLevel, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 // Import the Firebase configuration
@@ -52,6 +52,13 @@ export const db = firebaseConfig.firestoreDatabaseId
   ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
   : getFirestore(app);
 console.log('Firestore initialized successfully');
+enableIndexedDbPersistence(db).catch((err) => {
+  if (err.code == 'failed-precondition') {
+    console.log('Multiple tabs open, persistence can only be enabled in one tab at a a time.');
+  } else if (err.code == 'unimplemented') {
+    console.log('The current browser does not support all of the features required to enable persistence');
+  }
+});
 
 export const storage = getStorage(app);
 console.log('Firebase Storage initialized successfully');
@@ -117,10 +124,13 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   
-  // Only throw for permission errors as per the directive, to avoid crashing the app on network/offline errors
+  // Only log permission errors to avoid crashing the app on logout/unmount
   if (errorMessage.toLowerCase().includes('permission') || errorMessage.toLowerCase().includes('missing or insufficient permissions')) {
-    throw new Error(JSON.stringify(errInfo));
+    console.warn("Firestore Permission Denied (Recoverable): ", JSON.stringify(errInfo));
+    return;
   }
+  
+  throw new Error(JSON.stringify(errInfo));
 }
 
 // Test connection on load

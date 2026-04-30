@@ -19,7 +19,6 @@ export const COUNTRIES = [
   { code: 'ID', name: 'Indonesia' },
   { code: 'TR', name: 'Turkey' },
   { code: 'SA', name: 'Saudi Arabia' },
-  // Add more as needed, but this is a representative list for the UI
 ];
 
 export const LANGUAGES = [
@@ -32,4 +31,22 @@ export const LANGUAGES = [
   { code: 'zh', name: 'Chinese' },
   { code: 'ja', name: 'Japanese' },
   { code: 'hi', name: 'Hindi' },
+];
+
+export const BACKGROUND_PRESETS = [
+  { id: 'bg-none', class: 'bg-transparent text-stone-900 dark:text-stone-100', name: 'None' },
+  { id: 'bg-gradient-1', class: 'bg-gradient-to-br from-purple-500 to-indigo-600 text-white', name: 'Purple Dream' },
+  { id: 'bg-gradient-2', class: 'bg-gradient-to-br from-pink-500 to-rose-600 text-white', name: 'Rose Petal' },
+  { id: 'bg-gradient-3', class: 'bg-gradient-to-br from-amber-300 to-orange-500 text-white', name: 'Sunset' },
+  { id: 'bg-gradient-4', class: 'bg-gradient-to-br from-emerald-400 to-teal-600 text-white', name: 'Ocean' },
+  { id: 'bg-gradient-5', class: 'bg-gradient-to-br from-cyan-400 to-blue-600 text-white', name: 'Sky' },
+  { id: 'bg-gradient-6', class: 'bg-gradient-to-tr from-fuchsia-500 to-pink-500 text-white', name: 'Fuchsia' },
+  { id: 'bg-gradient-7', class: 'bg-gradient-to-bl from-slate-800 to-stone-900 text-white', name: 'Midnight' },
+  { id: 'bg-gradient-8', class: 'bg-gradient-to-br from-lime-400 to-green-600 text-white', name: 'Forest' },
+  { id: 'bg-gradient-9', class: 'bg-gradient-to-r from-violet-400 to-fuchsia-500 text-white', name: 'Twilight' },
+  { id: 'bg-gradient-10', class: 'bg-gradient-to-b from-sky-300 to-indigo-500 text-white', name: 'Deep Space' },
+  { id: 'bg-gradient-11', class: 'bg-gradient-to-r from-red-500 to-orange-500 text-white', name: 'Fire' },
+  { id: 'bg-texture-1', class: 'bg-[url("https://www.transparenttextures.com/patterns/always-grey.png")] bg-stone-800 text-white', name: 'Dark Texture' },
+  { id: 'bg-texture-2', class: 'bg-[url("https://www.transparenttextures.com/patterns/cubes.png")] bg-blue-900 text-white', name: 'Cubes' },
+  { id: 'bg-texture-3', class: 'bg-[url("https://www.transparenttextures.com/patterns/diamond-upholstery.png")] bg-rose-900 text-white', name: 'Diamonds' },
 ];

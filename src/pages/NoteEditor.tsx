@@ -35,7 +35,7 @@ export const NoteEditor = () => {
           initialLoad.current = false;
         }
       } else {
-        navigate('/');
+        navigate('/notes');
       }
       setLoading(false);
     }, (error) => {
@@ -91,7 +91,7 @@ export const NoteEditor = () => {
     try {
       const docRef = doc(db, `users/${user.uid}/notes/${id}`);
       await deleteDoc(docRef);
-      navigate('/');
+      navigate('/notes');
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `users/${user.uid}/notes/${id}`);
     }
@@ -104,7 +104,7 @@ export const NoteEditor = () => {
     <div className="h-full flex flex-col bg-white dark:bg-stone-950">
       <header className="flex items-center justify-between px-6 py-4 border-b border-stone-200 dark:border-stone-800">
         <div className="flex items-center gap-4">
-          <button onClick={() => navigate('/')} className="p-2 -ml-2 text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors">
+          <button onClick={() => navigate('/notes')} className="p-2 -ml-2 text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-2 text-sm text-stone-500 dark:text-stone-400">

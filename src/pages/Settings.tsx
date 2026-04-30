@@ -17,6 +17,10 @@ export const Settings = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [username, setUsername] = useState('');
   const [bio, setBio] = useState('');
+  const [hideFollowers, setHideFollowers] = useState(false);
+  const [hideFollowing, setHideFollowing] = useState(false);
+  const [followersCount, setFollowersCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
   
   const [copied, setCopied] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -40,6 +44,7 @@ export const Settings = () => {
     if (!user) return;
     const fetchProfile = async () => {
       try {
+        const { collection, getDocs } = await import('firebase/firestore');
         const docRef = doc(db, `users/${user.uid}`);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
@@ -47,6 +52,13 @@ export const Settings = () => {
           setProfile(data);
           setUsername(data.username || '');
           setBio(data.bio || '');
+          setHideFollowers(data.hideFollowers || false);
+          setHideFollowing(data.hideFollowing || false);
+          
+          const fw = await getDocs(collection(db, `users/${user.uid}/followers`));
+          setFollowersCount(fw.size);
+          const fg = await getDocs(collection(db, `users/${user.uid}/following`));
+          setFollowingCount(fg.size);
         }
       } catch (error) {
         handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
@@ -85,10 +97,14 @@ export const Settings = () => {
       batch.update(userRef, { 
         username: newUsername,
         bio,
+        hideFollowers,
+        hideFollowing
       });
       batch.update(publicRef, { 
         username: newUsername,
         bio,
+        hideFollowers,
+        hideFollowing
       });
 
       // If username changed, update chats and send notifications
@@ -474,6 +490,50 @@ export const Settings = () => {
                     />
                   </div>
                 </div>
+              </div>
+
+              <div className="pt-6 border-t border-stone-100 dark:border-stone-800">
+                <h3 className="text-lg font-bold text-stone-900 dark:text-stone-100 mb-4">Stats & Privacy</h3>
+                
+                <div className="flex gap-8 mb-6">
+                  <div className="flex flex-col">
+                    <span className="font-bold text-lg text-stone-900 dark:text-stone-100">{followersCount}</span>
+                    <span className="text-sm text-stone-500">Followers</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="font-bold text-lg text-stone-900 dark:text-stone-100">{followingCount}</span>
+                    <span className="text-sm text-stone-500">Following</span>
+                  </div>
+                </div>
+
+                {isEditing && (
+                  <div className="space-y-4">
+                     <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-sm text-stone-900 dark:text-stone-100">Hide Followers List</p>
+                          <p className="text-xs text-stone-500">Prevent others from seeing your followers count.</p>
+                        </div>
+                        <button
+                          onClick={() => setHideFollowers(!hideFollowers)}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${hideFollowers ? 'bg-[#00BFA5]' : 'bg-stone-200 dark:bg-stone-700'}`}
+                        >
+                          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${hideFollowers ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
+                     </div>
+                     <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-sm text-stone-900 dark:text-stone-100">Hide Following List</p>
+                          <p className="text-xs text-stone-500">Prevent others from seeing who you follow.</p>
+                        </div>
+                        <button
+                          onClick={() => setHideFollowing(!hideFollowing)}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${hideFollowing ? 'bg-[#00BFA5]' : 'bg-stone-200 dark:bg-stone-700'}`}
+                        >
+                          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${hideFollowing ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
+                     </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-between pt-6 border-t border-stone-100 dark:border-stone-800">

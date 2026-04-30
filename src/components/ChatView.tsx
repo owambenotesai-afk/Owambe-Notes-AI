@@ -50,24 +50,34 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
       if (!isSubscribed) return;
       const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setMessages(msgs);
-
-      // Mark unread messages as read
-      const unreadMessages = snapshot.docs.filter(doc => {
-        const data = doc.data();
-        return data.senderId !== user.uid && (!data.readBy || !data.readBy.includes(user.uid));
-      });
-
-      if (unreadMessages.length > 0) {
-        const batch = writeBatch(db);
-        unreadMessages.forEach(docSnap => {
+      
+      const unseenIds = snapshot.docs
+        .filter(docSnap => {
           const data = docSnap.data();
-          const readBy = data.readBy || [];
-          batch.update(docSnap.ref, { 
-            readBy: [...readBy, user.uid],
-            status: 'read'
-          });
+          return data.senderId !== user.uid && data.status !== 'seen';
+        })
+        .map(docSnap => docSnap.id);
+
+      if (unseenIds.length > 0) {
+        const batch = writeBatch(db);
+        snapshot.docs.forEach(docSnap => {
+          if (unseenIds.includes(docSnap.id)) {
+            batch.update(docSnap.ref, {
+              status: 'seen',
+              seenAt: serverTimestamp()
+            });
+          }
         });
-        batch.commit().catch(console.error);
+        
+        const lastMsgData = msgs[msgs.length - 1];
+        if (unseenIds.includes(lastMsgData.id)) {
+          batch.update(doc(db, 'chats', chat.id), {
+            'lastMessage.status': 'seen',
+            'lastMessage.seenAt': serverTimestamp(),
+            'lastMessage.unread': false
+          });
+        }
+        batch.commit().catch(e => console.error("Error setting messages as seen", e));
       }
     }, async (error) => {
       console.error('Error in messages onSnapshot:', error);
@@ -103,9 +113,13 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
     };
   }, [chat, user]);
 
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+
+
 
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -142,9 +156,9 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
         text: messageText,
         type: messageType,
         createdAt: serverTimestamp(),
-        readBy: [user.uid],
-        deliveredTo: [user.uid],
-        status: 'sent'
+        status: 'sent',
+        deliveredAt: null,
+        seenAt: null
       };
 
       await addDoc(collection(db, `chats/${chat.id}/messages`), messageData);
@@ -153,7 +167,8 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
         lastMessage: {
           text: messageText,
           senderId: user.uid,
-          createdAt: serverTimestamp()
+          createdAt: serverTimestamp(),
+          unread: true
         },
         updatedAt: serverTimestamp()
       });
@@ -213,8 +228,9 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
         fileSize: file.size,
         createdAt: serverTimestamp(),
         readBy: [user.uid],
-        deliveredTo: [user.uid],
-        status: 'sent'
+        status: 'sent',
+        deliveredAt: null,
+        seenAt: null
       };
 
       await addDoc(collection(db, `chats/${chat.id}/messages`), messageData);
@@ -223,7 +239,8 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
         lastMessage: {
           text: type === 'image' ? '📷 Image' : type === 'document' ? '📄 Document' : '🎤 Audio',
           senderId: user.uid,
-          createdAt: serverTimestamp()
+          createdAt: serverTimestamp(),
+          unread: true
         },
         updatedAt: serverTimestamp()
       });
@@ -247,6 +264,116 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
   const typingUsers = chat?.typing ? Object.entries(chat.typing)
     .filter(([uid, isTyping]) => isTyping && uid !== user?.uid)
     .map(([uid]) => chat.participantNames?.[uid] || 'Someone') : [];
+
+  // Typing sound effect
+  const typingAudioRef = useRef<HTMLAudioElement | null>(null);
+  
+  useEffect(() => {
+    // Only instantiate Audio once to avoid memory leaks
+    if (!typingAudioRef.current) {
+      const audio = new Audio("data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//OEAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAEAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMD//+7kAAAAAAAAAAAAAAAAAAAAAAABMYXZjNTguMTM0AAAAAAAAAAAAAAAAJAAAAAAAAAAAASAAAADg5yP0AAAAAAAAAAAAAAAAAAAA//MUxAAAAANIgAAAAAAA0gAAAAATEFNRTMuMTAwA8IAAAAAAAAAAIAgAECQgQAAoAAASAAA4Ocj9AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//MUxBQAABMIgAAAAAAA0gAAAAATEFNRTMuMTAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//MUxEQAABMIgAAAAAAA0gAAAAATEFNRTMuMTAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//MUxHAAABMIgAAAAAAA0gAAAAATEFNRTMuMTAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==");
+      audio.preload = "auto";
+      audio.loop = true;
+      typingAudioRef.current = audio;
+    }
+
+    // Try unlocking audio context on first user interaction if needed
+    const unlockAudio = () => {
+      // Just resolving the interaction requirement
+      if (typingAudioRef.current) {
+        typingAudioRef.current.play().then(() => {
+          typingAudioRef.current?.pause();
+          typingAudioRef.current!.currentTime = 0;
+        }).catch(() => {});
+      }
+      document.removeEventListener('click', unlockAudio);
+      document.removeEventListener('keydown', unlockAudio);
+      document.removeEventListener('touchstart', unlockAudio);
+    };
+    
+    document.addEventListener('click', unlockAudio);
+    document.addEventListener('keydown', unlockAudio);
+    document.addEventListener('touchstart', unlockAudio);
+
+    return () => {
+      document.removeEventListener('click', unlockAudio);
+      document.removeEventListener('keydown', unlockAudio);
+      document.removeEventListener('touchstart', unlockAudio);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typingUsers.length > 0) {
+      if (typingAudioRef.current) {
+        typingAudioRef.current.play().catch(e => console.error("Typing audio play error:", e));
+      }
+    } else {
+      if (typingAudioRef.current) {
+        typingAudioRef.current.pause();
+        typingAudioRef.current.currentTime = 0;
+      }
+    }
+  }, [typingUsers.length]);
+
+  // Message status update effect
+  useEffect(() => {
+    if (!messages || messages.length === 0 || !user || !chat) return;
+
+    let shouldUpdateLastMsgSeen = false;
+    let shouldUpdateLastMsgDelivered = false;
+
+    messages.forEach(msg => {
+      // If we received this message, mark it as seen
+      if (msg.senderId !== user.uid && msg.status !== 'seen') {
+        const msgRef = doc(db, `chats/${chat.id}/messages`, msg.id);
+        updateDoc(msgRef, {
+          status: 'seen',
+          seenAt: serverTimestamp()
+        }).catch(e => console.error(e));
+        
+        if (chat.lastMessage && chat.lastMessage.senderId !== user.uid && chat.lastMessage.status !== 'seen') {
+            if (chat.lastMessage.createdAt?.toMillis?.() === msg.createdAt?.toMillis?.() || chat.lastMessage.text === msg.text) {
+                shouldUpdateLastMsgSeen = true;
+            }
+        }
+      }
+      
+      // If we sent this message, check if recipient is online to mark as delivered
+      if (!isGroup && otherUser && msg.senderId === user.uid && msg.status === 'sent') {
+        if (otherUser.online) {
+          const msgRef = doc(db, `chats/${chat.id}/messages`, msg.id);
+          updateDoc(msgRef, {
+            status: 'delivered',
+            deliveredAt: serverTimestamp()
+          }).catch(e => console.error(e));
+          
+          if (chat.lastMessage && chat.lastMessage.senderId === user.uid && chat.lastMessage.status === 'sent') {
+              if (chat.lastMessage.createdAt?.toMillis?.() === msg.createdAt?.toMillis?.() || chat.lastMessage.text === msg.text) {
+                  shouldUpdateLastMsgDelivered = true;
+              }
+          }
+        }
+      }
+    });
+
+    if (shouldUpdateLastMsgSeen) {
+        updateDoc(doc(db, 'chats', chat.id), {
+            'lastMessage.status': 'seen',
+            'lastMessage.seenAt': serverTimestamp(),
+            'lastMessage.unread': false
+        }).catch(e => console.error(e));
+    } else if (chat.lastMessage && chat.lastMessage.senderId !== user.uid && chat.lastMessage.unread) {
+        updateDoc(doc(db, 'chats', chat.id), {
+            'lastMessage.unread': false
+        }).catch(e => console.error(e));
+    }
+    if (shouldUpdateLastMsgDelivered) {
+        updateDoc(doc(db, 'chats', chat.id), {
+            'lastMessage.status': 'delivered',
+            'lastMessage.deliveredAt': serverTimestamp()
+        }).catch(e => console.error(e));
+    }
+  }, [messages, otherUser?.online, user?.uid, chat?.id, isGroup]);
 
   const isRequest = chat?.type === 'private' && chat.lastMessage?.senderId !== user?.uid && !chat.acceptedBy?.includes(user?.uid) && chat.lastMessage;
 
@@ -512,7 +639,7 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
         </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-stone-50 dark:bg-stone-950">
+      <div className="flex-1 overflow-y-auto mobile-scrollbar-hide p-4 space-y-4 bg-stone-50 dark:bg-stone-950">
         {messages.map((msg, index) => {
           if (msg.type === 'system') {
             return (
@@ -558,14 +685,14 @@ export const ChatView = ({ chat, onBack }: { chat: any, onBack: () => void }) =>
                     <audio controls src={msg.mediaUrl} className="w-full max-w-xs mb-2" />
                   )}
                   {msg.text && <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.text}</p>}
-                  <div className={`flex items-center justify-end gap-1 mt-1 ${isMine ? 'text-stone-400 dark:text-stone-500' : 'text-stone-400 dark:text-stone-500'}`}>
+                  <div className={`flex items-center justify-end gap-1 mt-1 ${isMine ? 'text-white/70' : 'text-stone-400 dark:text-stone-500'}`}>
                     <span className="text-[10px]">
                       {msg.createdAt?.toDate ? msg.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                     </span>
                     {isMine && (
-                      msg.readBy?.length > 1 ? <CheckCheck className="w-4 h-4 text-[#00BFA5] dark:text-[#00BFA5]" /> : 
-                      msg.deliveredTo?.length > 1 ? <CheckCheck className="w-4 h-4 text-stone-400 dark:text-stone-500" /> : 
-                      <Check className="w-4 h-4 text-stone-400 dark:text-stone-500" />
+                      msg.status === 'seen' || msg.readBy?.length > 1 ? <CheckCheck className="w-4 h-4 text-white dark:text-white" /> : 
+                      msg.status === 'delivered' || msg.deliveredTo?.length > 1 ? <CheckCheck className="w-4 h-4 text-stone-200 dark:text-stone-400" /> : 
+                      <Check className="w-4 h-4 text-stone-200 dark:text-stone-400" />
                     )}
                   </div>
                 </div>
